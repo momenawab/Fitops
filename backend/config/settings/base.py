@@ -144,8 +144,16 @@ USE_TZ = True
 # --------------------------------------------------------------------
 # STATIC / MEDIA
 # --------------------------------------------------------------------
+# Phase 1 stores media on a local/Hetzner volume via Django's default
+# filesystem storage; the storage abstraction (backend/common/storage/)
+# is owned by a later Story.
+# ROOTs are environment-driven (volume mount in production, local
+# directory in development); URL prefixes are identical in every
+# environment and must never carry a hostname.
 STATIC_URL = "static/"
-# Additional static and media handling is configured in task T8.
+STATIC_ROOT = env("STATIC_ROOT", str(BASE_DIR / "staticfiles"))
+MEDIA_URL = "media/"
+MEDIA_ROOT = env("MEDIA_ROOT", str(BASE_DIR / "mediafiles"))
 
 
 # --------------------------------------------------------------------
