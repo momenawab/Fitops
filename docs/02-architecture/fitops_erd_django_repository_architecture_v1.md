@@ -1018,7 +1018,9 @@ fitops/
 │   │   ├── workspaces/
 │   │   ├── coaching/
 │   │   ├── clients/
+│   │   ├── applications/
 │   │   ├── commerce/
+│   │   ├── billing/
 │   │   ├── notifications/
 │   │   └── audit/
 │   │

@@ -31,8 +31,8 @@
 | **Last updated** | 2026-08-14 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
 
-**Repository state:** git repository initialized on branch `main`, one commit (`6d3eedd`), working
-tree clean. Monorepo skeleton, `.gitignore`, `.env.example` and `README.md` in place. **No
+**Repository state:** git repository initialized on branch `main`, working tree clean. Story 1.1
+complete; one approved documentation correction applied since (ERD §24 repository tree). Monorepo skeleton, `.gitignore`, `.env.example` and `README.md` in place. **No
 application code yet** — Django arrives in Story 1.2, Next.js in Story 1.3, `docker-compose.yml` in
 Story 1.6.
 
@@ -148,7 +148,8 @@ framework · configure Django's email backend with SMTP settings sourced from en
 2. Python and PostgreSQL availability confirmed — **Unknown / not verified** in this environment.
 3. Re-read Blueprint §6 Story 1.2, Technology Stack (sessions, email), Database & Auth Architecture
    §5 (Django session framework) and ERD §15–§23 (app boundaries).
-4. Note the ERD §24 discrepancy recorded under *Known Issues / Risks* before creating apps.
+4. ~~Note the ERD §24 discrepancy~~ — resolved 2026-08-14. §24, §15 and Story 1.2 now agree on the
+   canonical nine apps.
 
 ---
 
@@ -160,11 +161,16 @@ Architecture and product decisions are **not** recorded here — they live in th
 Blueprint decision log (§2A: v1.1 decisions 1–18; §2B: v1.2 billing decisions 19–37 and v1.2.1
 decisions 38–43). Do not duplicate them into this file.
 
-Record here only decisions that arise **during implementation** and were **explicitly approved by
-the user**, using this format:
+Decisions that arose **during implementation** and were **explicitly approved by the user**:
 
 | Decision | Reason | Date | Related Story | Author/agent |
 |---|---|---|---|---|
+| **Correct the ERD §24 repository tree** to list all nine canonical Django apps by adding `applications/` and `billing/`. Documentation-only; two inserted lines. | ERD §24's tree omitted two apps that ERD §15 and Blueprint Story 1.2 both list. The stale tree would have misled Story 1.2's app creation. | 2026-08-14 | Discovered in 1.1, blocks 1.2 | User-approved (Option A); applied by Claude Opus 5 |
+| **Rejected**: a proposed nine-app list replacing `coaching` with `plans` + `checkins` and dropping `audit`. | Would have changed domain boundaries (ERD §18), removed the owner of `AuditLog` (25 references across four approved documents, including approved billing rule B15 requiring both a `BillingEvent` and an `AuditLog` on admin decisions), and created a new contradiction instead of resolving one. Reported rather than applied; user confirmed the rejection. | 2026-08-14 | Pre-1.2 | Reported by Claude Opus 5; user confirmed |
+
+**Canonical Django app list (unchanged, confirmed):** `accounts`, `workspaces`, `coaching`,
+`clients`, `applications`, `commerce`, `billing`, `notifications`, `audit`. The `coaching` app is
+**not** split; the `audit` app is **not** removed.
 
 ---
 
@@ -200,7 +206,7 @@ Documented risks carried from the architecture (context for a future agent, not 
 
 | Item | Impact | Related Story | Status | Suggested next action |
 |---|---|---|---|---|
-| **ERD §24 app list is stale** | The Repository Structure tree in ERD §24 still lists the pre-v1.1/v1.2 app set and omits `applications` and `billing`. ERD §15 and Blueprint Story 1.2 both list the full nine apps. Did **not** affect Story 1.1 (no apps created), but it will mislead Story 1.2 | 1.2 | **Open — reported, not fixed** | Ask the user to approve correcting the ERD §24 tree; do not change it unilaterally |
+| ~~ERD §24 app list is stale~~ | Omitted `applications` and `billing` from the §24 repository tree | 1.2 | ✅ **RESOLVED 2026-08-14** | Corrected under user approval (Option A). §24 now matches §15 and Blueprint Story 1.2 — see *Decisions Made During Implementation* |
 | B24–B27 unresolved | Epic 22 billing Stories cannot be fully completed | 22.6, 22.9, 22.10b, 22.10c | Open — registered | Ask the user before those Stories begin |
 | SMTP provider unselected | None — env-configured | Epic 02 email Stories | Open by design | Configure at deployment |
 | Empty dirs use `.gitkeep` | Git cannot track empty directories; `.gitkeep` placeholders keep the ERD §24 skeleton in version control. They should be deleted as each directory gains real files | 1.2, 1.3 | Accepted convention | Remove each `.gitkeep` when its directory gets real content |
@@ -313,10 +319,12 @@ re-verify Story 1.1, run `git status` (expect a clean tree) and confirm `git ls-
 
 **Non-obvious context for the next agent:**
 
-- **ERD §24's app list is stale** — its Repository Structure tree omits `applications` and
-  `billing`. ERD §15 and Blueprint Story 1.2 both list the full nine apps. **Use the nine-app list**
-  (`accounts`, `workspaces`, `coaching`, `clients`, `applications`, `commerce`, `billing`,
-  `notifications`, `audit`). This was reported, not silently fixed — see *Known Issues / Risks*.
+- **ERD §24 was corrected on 2026-08-14** and now matches ERD §15 and Blueprint Story 1.2. All
+  three agree on the canonical nine apps: `accounts`, `workspaces`, `coaching`, `clients`,
+  `applications`, `commerce`, `billing`, `notifications`, `audit`. Do **not** split `coaching` into
+  `plans`/`checkins` and do **not** drop `audit` — that variant was explicitly proposed, rejected
+  and recorded under *Decisions Made During Implementation*. Note that `plans/` and `check-ins/` do
+  appear in the docs as **frontend routes** (ERD §25), never as Django apps.
 - `docker-compose.yml` is intentionally absent. It belongs to Story 1.6, not 1.1.
 - `.gitkeep` files are placeholders only. Delete each one once its directory holds real files.
 - The user works in strict approval gates. Report gaps and stop; never fill a gap with a sensible
