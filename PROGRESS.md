@@ -131,12 +131,12 @@ Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Clau
 ```
 [x] T1  Django skeleton + split settings + env loading + requirements + common/   Codex     ✅ PASS (89ea8e5)
 [x] T2  Nine canonical Django app packages                                        OpenCode/GLM  ✅ PASS (a2b8988, merged f4a0292)
-[ ] T3  Register nine apps in INSTALLED_APPS                                      Codex     READY (T2 landed; needs settings lock)
+[~] T3  Register nine apps in INSTALLED_APPS                                      Codex     DISPATCHED (holds settings lock)
 [x] T4  DRF config (session auth + pagination)                                    Codex     ✅ PASS (56658c4)
 [ ] T5  Session framework + cookie/CSRF security                                  Codex     NEXT in settings chain (lock free)
 [ ] T6  PostgreSQL DATABASES from env                                             OpenCode  READY (awaiting approval)
 [ ] T7  Email backend + SMTP from env                                             OpenCode  READY (awaiting approval)
-[ ] T8  Static/media handling                                                     AGY       READY (awaiting approval)
+[ ] T8  Static/media handling                                                     OpenCode/GLM  reassigned from AGY (user decision)
 [ ] T9  Acceptance verification                                                   Claude    blocked on T1-T8
 ```
 
@@ -197,9 +197,9 @@ and runs all gates that need them.
 | throttle classes | `[]` — correctly not configured (Epic 20) |
 | scope | only the 2 allowed files; DATABASE/SESSIONS/EMAIL/STATIC sections untouched ✅ |
 
-**Master decision surfaced:** `DEFAULT_PERMISSION_CLASSES = IsAuthenticated` was specified by Master
-in the T4 brief as a deny-by-default security posture. Public endpoints (public coach portal, public
-application) must explicitly opt out per-view in their own Stories. **User may veto this default.**
+**Master decision — now USER-APPROVED (2026-08-14):** `DEFAULT_PERMISSION_CLASSES = IsAuthenticated`
+is the approved deny-by-default posture for this project. Public endpoints must explicitly opt out
+with `AllowAny` in their own future Stories when required.
 
 #### T2 review record (Master-executed) — commit `a2b8988`, merged `f4a0292`
 
@@ -226,8 +226,10 @@ Worktree `t2-apps` merged with `--no-ff`, then worktree and branch removed. Main
 
 Worktree verified pristine before every re-dispatch, so no worker entered a dirty tree (Rule 12).
 
-**AGY remains unusable headless — this blocks T8, which is assigned to AGY.** User decision needed
-before T8: fix AGY's permission config, or reassign T8.
+**AGY — USER DECISION (2026-08-14):** do **not** use `--dangerously-skip-permissions`, do **not**
+modify `~/.claude/settings.json`. AGY stays temporarily unavailable for headless delegation.
+**T8 reassigned from AGY → OpenCode/GLM.** No rework required for the failed T2 dispatch attempts:
+the final result passed review and every worktree was verified pristine beforehand.
 
 #### Worker environment limitation#### Worker environment limitation#### Worker environment limitation (important for future delegations)
 
@@ -254,11 +256,11 @@ would drift from it, and altering `CLAUDE.md` content is outside any worker's au
 
 ### Last completed step### Last completed step
 
-"T2 reviewed, committed in worktree, merged to main (f4a0292); worktree removed. Wave 1 complete."
+"Wave 1 accepted by user. T3 dispatched to Codex under the settings lock."
 
 ### Next step
 
-"Await approval, then T3 (register the nine apps in INSTALLED_APPS, Codex, settings lock)."
+"Review T3; if PASS, land it and proceed to T5 (sessions/security, Codex, settings lock)."
 
 ---
 
