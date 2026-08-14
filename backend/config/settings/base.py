@@ -109,8 +109,16 @@ WSGI_APPLICATION = "config.wsgi.application"
 # --------------------------------------------------------------------
 # DATABASE
 # --------------------------------------------------------------------
-# Configured in task T6 (PostgreSQL from environment).
-DATABASES = {}
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": env("POSTGRES_DB", "fitops"),
+        "USER": env("POSTGRES_USER", "fitops"),
+        "PASSWORD": env("POSTGRES_PASSWORD", ""),
+        "HOST": env("POSTGRES_HOST", "localhost"),
+        "PORT": env("POSTGRES_PORT", "5432"),
+    }
+}
 
 
 # --------------------------------------------------------------------
