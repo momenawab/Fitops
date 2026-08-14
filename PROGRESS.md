@@ -130,9 +130,9 @@ Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Clau
 
 ```
 [x] T1  Django skeleton + split settings + env loading + requirements + common/   Codex     ✅ PASS (89ea8e5)
-[ ] T2  Nine canonical Django app packages                                        AGY       READY (awaiting approval)
+[~] T2  Nine canonical Django app packages                                        AGY       DISPATCHED (worktree t2-apps)
 [ ] T3  Register nine apps in INSTALLED_APPS                                      Codex     blocked on T2
-[ ] T4  DRF config (session auth + pagination)                                    Codex     READY (awaiting approval)
+[~] T4  DRF config (session auth + pagination)                                    Codex     DISPATCHED (main tree, holds settings lock)
 [ ] T5  Session framework + cookie/CSRF security                                  Codex     READY (awaiting approval)
 [ ] T6  PostgreSQL DATABASES from env                                             OpenCode  READY (awaiting approval)
 [ ] T7  Email backend + SMTP from env                                             OpenCode  READY (awaiting approval)
@@ -153,6 +153,22 @@ Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Clau
 Settings-lock: only one worker may modify `backend/config/settings/base.py` at a time. Worktree
 isolation is managed by Master via `git worktree` and dispatched into with the relay's `--cd` flag —
 `delegate-skills` relays provide no worktree flag of their own.
+
+**Wave 1 live isolation (2026-08-14):**
+
+| Task | Worker | Working tree | Exclusive scope |
+|---|---|---|---|
+| T2 | AGY | worktree `t2-apps` at `…/scratchpad/wt-apps` | `backend/apps/**` |
+| T4 | Codex | main tree (branch `main`) | `backend/config/settings/base.py` + `backend/common/pagination/__init__.py` |
+
+The two scopes are file-disjoint, and each brief names the other worker's territory as
+"ANOTHER WORKER IS EDITING THIS CONCURRENTLY — do not touch". T4 holds the settings lock.
+
+**Landing order:** T4 lands on `main` first (it is already in the main tree), then branch `t2-apps`
+is merged. Merging requires a clean main tree, so the order is not interchangeable.
+
+**Standing rule discovered in T1:** workers have no network. Master performs all package installs
+and runs all gates that need them.
 
 ### Current state
 
@@ -198,11 +214,11 @@ would drift from it, and altering `CLAUDE.md` content is outside any worker's au
 
 ### Last completed step### Last completed step
 
-"T1 reviewed, scope violation corrected, and landed as commit 89ea8e5."
+"Wave 1 dispatched: T2 to AGY in isolated worktree, T4 to Codex holding the settings lock."
 
 ### Next step
 
-"Await user approval, then dispatch Wave 1 — T2 (AGY, apps/**) and the settings-lock chain."
+"Review T2 and T4 results independently; land T4 first (main tree), then merge branch t2-apps."
 
 ---
 
