@@ -228,8 +228,8 @@ downloads, so Master provisions and Codex implements. `--sandbox danger-full-acc
 ### Task board
 
 ```
-[~] P   Master provisioning (network only)      Claude   IN PROGRESS
-[ ] I   Story 1.3 implementation (ONE task)     Codex    blocked on P
+[x] P   Master provisioning (network only)      Claude   ✅ COMPLETE
+[~] I   Story 1.3 implementation (ONE task)     Codex    DISPATCHED
 [ ] R   Master review + final acceptance        Claude   blocked on I
 ```
 
@@ -258,7 +258,7 @@ though Blueprint Story 1.7 owns the lint/format/typecheck *baseline*. Flagged to
 | `create-next-app` scaffold | ✅ Next.js 16.3.1, React 19.2.8, Tailwind 4, TypeScript 5, ESLint 9 |
 | Scaffold moved into `frontend/` | ✅ 6 files deliberately excluded (`.git`, `.next`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`) |
 | `react-hook-form` + `zod` + `@tanstack/react-query` | ✅ 7.85.0 / 4.4.3 / 5.101.4 |
-| `shadcn init` | Radix UI approved by user 2026-08-14; running |
+| `shadcn init` | ✅ `style: radix-nova`, `radix-ui` installed, `iconLibrary: lucide`, no Base UI |
 
 **Note:** `create-next-app` now generates its own `AGENTS.md` and `CLAUDE.md` in every project. Both
 were excluded. This is very likely the origin of the Story 1.2 `AGENTS.md` artifact — a scaffolder
@@ -288,13 +288,63 @@ succeeded while the tool did nothing. Caught only by inspecting the filesystem
 use `set -o pipefail` and an explicit exit-code echo, and every provisioning step is confirmed
 against the filesystem rather than against a status line.
 
+### Provisioned stack (final, verified on the filesystem)
+
+| Package | Version | Approved by |
+|---|---|---|
+| next / react / react-dom | 16.3.1 / 19.2.8 / 19.2.8 | Technology Stack "Next.js" |
+| typescript | 5 | "Next.js + TypeScript" |
+| tailwindcss + @tailwindcss/postcss | 4 | "Tailwind CSS" |
+| shadcn/ui → **radix-ui** | `style: radix-nova`, `iconLibrary: lucide` | "shadcn/ui"; Radix per user decision; Lucide per design.md §25 |
+| clsx / tailwind-merge / class-variance-authority / lucide-react | 2.1.1 / 3.6.0 / 0.7.1 / 1.31.0 | shadcn/ui transitive |
+| react-hook-form | 7.85.0 | "Forms: React Hook Form" |
+| zod | 4.4.3 | "Zod" |
+| @tanstack/react-query | 5.101.4 | "Server State: TanStack Query" |
+| eslint / eslint-config-next | 9 / 16.3.1 | Next.js official scaffold |
+
+**Not installed, deliberately:** `@hookform/resolvers` (not in the approved stack — the first Story
+that builds a real form will need it), react-query devtools, Prettier, any test library.
+
+**Divergence to resolve in a later UI Story:** the `nova` preset ships **Geist** as its font, while
+design.md §8 mandates **Inter**. Theme tokens are explicitly out of Story 1.3 scope; design.md
+remains authoritative and was NOT modified.
+
+### shadcn init took four attempts — all recorded
+
+| # | Command | Result |
+|---|---|---|
+| 1 | `--base-color neutral` | `error: unknown option` — flag removed from CLI. Nothing created. |
+| 2 | `-y --no-monorepo` | Hung on interactive "Select a component library" prompt. Nothing created. |
+| 3 | `-b radix -p radix-nova` | `Invalid preset: radix-nova. Available: nova, vega, maia, lyra, mira, luma, sera, rhea`. Nothing created. |
+| 4 | `-b radix -p nova` | ✅ Success — `components.json`, `lib/utils.ts`, fonts + `globals.css` updated |
+
+Attempts 1–2 reported shell exit code **0** while the tool did nothing, because the command was
+piped through `tail`. **Process lesson applied from attempt 3 onward: `set -o pipefail` plus an
+explicit `echo $?`, and every provisioning step confirmed against the filesystem rather than a
+status line.** Attempt 3's real failure (`SHADCN_EXIT=1`) was caught only because of that change.
+
+### Codex implementation task — dispatched
+
+ONE bounded task covering: package identity, app shell + root layout, TanStack Query provider
+(per-session client, not module scope), Zod example schema proving configuration, TypeScript strict
++ `@/*` alias + `typecheck` script, `frontend/.env.example`, and `.gitkeep` cleanup only where
+directories now hold real files.
+
+**Explicitly fenced out of the brief:** the ERD §25 route tree, all product UI, auth flows, API
+integration, business logic, design-system implementation, shadcn component additions, dependency
+changes, test/lint/CI setup, backend and docs changes, and `AGENTS.md`.
+
+**Scope call recorded:** ERD §25's route tree (`(marketing)/`, `auth/`, `onboarding/`, `admin/`,
+`[workspaceSlug]/**`) is **not** created in this Story. Story 1.3's criterion is "Basic application
+shell exists"; those 15 route areas are owned by Epics 06–19.
+
 ### Last completed step
 
-"Provisioned Next.js + Tailwind + TypeScript + the three approved libraries; shadcn init blocked on an undecided primitive library."
+"Provisioning complete (Next.js + Tailwind + TS + shadcn/Radix + RHF + Zod + TanStack Query); single Codex implementation task dispatched."
 
 ### Next step
 
-"Await the user's shadcn primitive-library decision (Base UI / React Aria / Radix UI), finish provisioning, then dispatch the single Codex implementation brief."
+"Independently review Codex's final diff, run all Story 1.3 gates (typecheck, lint, build, dev-server boot), then final Story acceptance."
 
 ---
 
