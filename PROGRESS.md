@@ -135,7 +135,7 @@ Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Clau
 [x] T4  DRF config (session auth + pagination)                                    Codex     ✅ PASS (56658c4)
 [x] T5  Session framework + cookie/CSRF security                                  Codex     ✅ PASS (ac106f1)
 [x] T6  PostgreSQL DATABASES from env                                             OpenCode/GLM  ✅ PASS (842440f) — live connection verified
-[ ] T7  Email backend + SMTP from env                                             OpenCode/GLM  READY — next in settings chain
+[~] T7  Email backend + SMTP from env                                             OpenCode/GLM  DISPATCHED (holds settings lock)
 [ ] T8  Static/media handling                                                     OpenCode/GLM  reassigned from AGY (user decision)
 [ ] T9  Acceptance verification                                                   Claude    blocked on T1-T8
 ```
@@ -344,11 +344,11 @@ would drift from it, and altering `CLAUDE.md` content is outside any worker's au
 
 ### Last completed step### Last completed step
 
-"T6 reviewed and landed (842440f); real PostgreSQL connection verified by Master; settings lock released."
+"T6 accepted by user as COMPLETE. T7 dispatched to OpenCode/GLM under the settings lock."
 
 ### Next step
 
-"T7 — Django email backend + SMTP from env (OpenCode/GLM, settings lock)."
+"Review T7: verify wiring only (no provider chosen, no delivery test); if PASS, land and STOP before T8."
 
 ---
 
