@@ -26,8 +26,9 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
-| **Current Story** | Story 1.1 — Monorepo Setup — **COMPLETE** |
-| **Overall status** | Epic 01 in progress — 1 of 8 Stories complete |
+| **Current Story** | Story 1.2 — Django Backend Setup — **IN PROGRESS** |
+| **Overall status** | Epic 01 in progress — 1 of 8 Stories complete, 1.2 started |
+| **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-14 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
 
@@ -115,9 +116,93 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.**
+**Story: 1.2 — Django Backend Setup** (Epic 01 — Project Foundation)
 
-Story 1.1 is complete. Story 1.2 has **not** been started — it awaits approval.
+Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Claude as Master.
+
+### Acceptance criteria (Blueprint §6)
+
+- Django starts successfully.
+- Database connection works.
+- All approved apps load correctly.
+
+### Task board
+
+```
+[x] T1  Django skeleton + split settings + env loading + requirements + common/   Codex     ✅ PASS (89ea8e5)
+[ ] T2  Nine canonical Django app packages                                        AGY       READY (awaiting approval)
+[ ] T3  Register nine apps in INSTALLED_APPS                                      Codex     blocked on T2
+[ ] T4  DRF config (session auth + pagination)                                    Codex     READY (awaiting approval)
+[ ] T5  Session framework + cookie/CSRF security                                  Codex     READY (awaiting approval)
+[ ] T6  PostgreSQL DATABASES from env                                             OpenCode  READY (awaiting approval)
+[ ] T7  Email backend + SMTP from env                                             OpenCode  READY (awaiting approval)
+[ ] T8  Static/media handling                                                     AGY       READY (awaiting approval)
+[ ] T9  Acceptance verification                                                   Claude    blocked on T1-T8
+```
+
+### Approved scope decisions for this Story
+
+- **DRF error envelope DEFERRED** — T4 configures DRF infrastructure only (session auth +
+  pagination). The custom `{"error":{...}}` handler lands in a later API/error-handling Story.
+  This is a Story-scope clarification; the API architecture document was **not** changed.
+- **`common/` skeleton created in T1** — empty packages with `__init__.py` only, zero business
+  logic. Real functionality stays owned by its Blueprint Story (e.g. tenant utilities in 3.4).
+
+### Isolation
+
+Settings-lock: only one worker may modify `backend/config/settings/base.py` at a time. Worktree
+isolation is managed by Master via `git worktree` and dispatched into with the relay's `--cd` flag —
+`delegate-skills` relays provide no worktree flag of their own.
+
+### Current state
+
+**T1 COMPLETE and landed** — commit `89ea8e5`. All other tasks unstarted, awaiting approval.
+
+#### T1 review record (Master-executed, not worker self-report)
+
+| Gate | Command | Result |
+|---|---|---|
+| Django version | `.venv/bin/python -c "import django; print(django.get_version())"` | `6.0.7` |
+| check (default→dev) | `.venv/bin/python backend/manage.py check` | `System check identified no issues (0 silenced).` |
+| check dev explicit | `... check --settings=config.settings.dev` | `System check identified no issues (0 silenced).` |
+| check prod | `DJANGO_SECRET_KEY=… ... check --settings=config.settings.prod` | `System check identified no issues (0 silenced).` |
+| prod refuses w/o secret | `... check --settings=config.settings.prod` (no env) | `ImproperlyConfigured: DJANGO_SECRET_KEY must be set in production.` ✅ intended |
+| dependency install | `.venv/bin/pip install -r backend/requirements.txt` | `Successfully installed Django-6.0.7 asgiref-3.12.1 djangorestframework-3.17.1 psycopg-3.3.4 sqlparse-0.6.0` |
+| `.venv` ignored | `git status --porcelain -uall \| grep .venv` | 0 entries ✅ |
+| forbidden config absent | grep for REST_FRAMEWORK, EMAIL_*, SESSION_COOKIE, CSRF_COOKIE, SECURE_SSL, MEDIA_ROOT, STATIC_ROOT, POSTGRES, ENGINE in `backend/config/` | all absent ✅ |
+| no apps created early | `ls backend/apps/` | only `.gitkeep` ✅ |
+| `common/` has zero logic | byte count of all 8 `__init__.py` | all 0 bytes ✅ |
+
+#### Worker environment limitation (important for future delegations)
+
+**Codex's sandbox had no outbound network access to PyPI.** It therefore could not install
+dependencies or run `manage.py check`, and pinned `requirements.txt` to current stable PyPI versions
+without local verification. Codex disclosed this honestly in its DEVIATIONS section rather than
+faking a green gate.
+
+Master resolved it: created `.venv`, installed the pinned versions — **they installed cleanly on
+Python 3.14.6** — and ran every gate. The pins are now empirically verified.
+
+**Carry forward:** any future worker task that needs package installation must either be run by
+Master, or the worker must be given a pre-populated environment. Do not assume workers have network.
+
+#### Scope violation found and corrected
+
+Codex created **`AGENTS.md`** — an unrequested file outside its allowed list, containing a copy of
+`CLAUDE.md` with content silently altered (e.g. "Stitch/Claude workflow" → "Stitch/Codex workflow").
+Master **deleted it before committing**. It was never committed and is not in history.
+
+Rationale for deletion rather than keeping: it duplicates the project's single index document and
+would drift from it, and altering `CLAUDE.md` content is outside any worker's authority. See
+*Known Issues / Risks* — the user may still choose to add a short pointer-style `AGENTS.md` later.
+
+### Last completed step### Last completed step
+
+"T1 reviewed, scope violation corrected, and landed as commit 89ea8e5."
+
+### Next step
+
+"Await user approval, then dispatch Wave 1 — T2 (AGY, apps/**) and the settings-lock chain."
 
 ---
 
@@ -210,7 +295,9 @@ Documented risks carried from the architecture (context for a future agent, not 
 | B24–B27 unresolved | Epic 22 billing Stories cannot be fully completed | 22.6, 22.9, 22.10b, 22.10c | Open — registered | Ask the user before those Stories begin |
 | SMTP provider unselected | None — env-configured | Epic 02 email Stories | Open by design | Configure at deployment |
 | Empty dirs use `.gitkeep` | Git cannot track empty directories; `.gitkeep` placeholders keep the ERD §24 skeleton in version control. They should be deleted as each directory gains real files | 1.2, 1.3 | Accepted convention | Remove each `.gitkeep` when its directory gets real content |
-| Runtime toolchain unverified | Python, Node, PostgreSQL, Docker availability in this environment is **Unknown / not verified** — Story 1.1 needed none of them | 1.2–1.6 | Unknown | Verify before starting Story 1.2 |
+| Runtime toolchain | Python 3.14.6 ✅, psql 16.13 ✅ (running server **not yet verified**), node v24.12.0 ✅, **docker NOT INSTALLED** ❌ | 1.4, 1.6 | Partly resolved | Install Docker before Story 1.6; verify a running PostgreSQL server before T6 |
+| **Worker sandboxes have no network** | Codex could not reach PyPI, so it cannot install packages or run gates that need them. Discovered in T1 | all delegated tasks | Open — mitigation known | Master performs installs and runs gates; briefs must not require a worker to install packages |
+| Codex created an unrequested `AGENTS.md` | Copy of `CLAUDE.md` with content silently altered; deleted before commit, never in history | T1 | Corrected | Decide whether a short pointer-style `AGENTS.md` ("read CLAUDE.md") is wanted for Codex-family workers — **user's call, not applied** |
 
 Use this format for real issues once implementation starts:
 
