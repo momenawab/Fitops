@@ -131,9 +131,9 @@ Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Clau
 ```
 [x] T1  Django skeleton + split settings + env loading + requirements + common/   Codex     ✅ PASS (89ea8e5)
 [x] T2  Nine canonical Django app packages                                        OpenCode/GLM  ✅ PASS (a2b8988, merged f4a0292)
-[~] T3  Register nine apps in INSTALLED_APPS                                      Codex     DISPATCHED (holds settings lock)
+[x] T3  Register nine apps in INSTALLED_APPS                                      Codex     ✅ PASS (2bc78e3)
 [x] T4  DRF config (session auth + pagination)                                    Codex     ✅ PASS (56658c4)
-[ ] T5  Session framework + cookie/CSRF security                                  Codex     NEXT in settings chain (lock free)
+[ ] T5  Session framework + cookie/CSRF security                                  Codex     READY — next in settings chain (lock free)
 [ ] T6  PostgreSQL DATABASES from env                                             OpenCode  READY (awaiting approval)
 [ ] T7  Email backend + SMTP from env                                             OpenCode  READY (awaiting approval)
 [ ] T8  Static/media handling                                                     OpenCode/GLM  reassigned from AGY (user decision)
@@ -231,6 +231,20 @@ modify `~/.claude/settings.json`. AGY stays temporarily unavailable for headless
 **T8 reassigned from AGY → OpenCode/GLM.** No rework required for the failed T2 dispatch attempts:
 the final result passed review and every worktree was verified pristine beforehand.
 
+#### T3 review record (Master-executed) — commit `2bc78e3`
+
+| Gate | Result |
+|---|---|
+| diff scope | exactly one file, `backend/config/settings/base.py`; only the `LOCAL_APPS` list changed ✅ |
+| `manage.py check` default / dev / prod | `System check identified no issues (0 silenced).` (all three) |
+| all nine apps load | ✅ every AppConfig resolves with `name == "apps.<label>"` |
+| registered app count | 16 = 6 django + 1 drf + 9 local ✅ |
+| migrations created | none ✅ (correct — no models exist yet) |
+| other sections untouched | `DATABASES = {}` intact; SESSION_COOKIE / EMAIL_ / MEDIA_ROOT / STATIC_ROOT all still absent ✅ |
+
+Canonical order preserved: accounts, workspaces, coaching, clients, applications, commerce, billing,
+notifications, audit. `coaching` unsplit, `audit` present.
+
 #### Worker environment limitation#### Worker environment limitation#### Worker environment limitation (important for future delegations)
 
 **Codex's sandbox had no outbound network access to PyPI.** It therefore could not install
@@ -256,11 +270,11 @@ would drift from it, and altering `CLAUDE.md` content is outside any worker's au
 
 ### Last completed step### Last completed step
 
-"Wave 1 accepted by user. T3 dispatched to Codex under the settings lock."
+"T3 reviewed and landed (2bc78e3); settings lock released."
 
 ### Next step
 
-"Review T3; if PASS, land it and proceed to T5 (sessions/security, Codex, settings lock)."
+"T5 — session framework + cookie/CSRF security settings (Codex, settings lock)."
 
 ---
 
