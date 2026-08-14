@@ -251,13 +251,51 @@ component kits.
 **Judgment surfaced:** `--eslint` included because it is part of the official Next.js scaffold, even
 though Blueprint Story 1.7 owns the lint/format/typecheck *baseline*. Flagged to the user.
 
+### Provisioning status — PARTIAL, blocked on a decision
+
+| Step | Status |
+|---|---|
+| `create-next-app` scaffold | ✅ Next.js 16.3.1, React 19.2.8, Tailwind 4, TypeScript 5, ESLint 9 |
+| Scaffold moved into `frontend/` | ✅ 6 files deliberately excluded (`.git`, `.next`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`) |
+| `react-hook-form` + `zod` + `@tanstack/react-query` | ✅ 7.85.0 / 4.4.3 / 5.101.4 |
+| `shadcn init` | ❌ **BLOCKED** — see below |
+
+**Note:** `create-next-app` now generates its own `AGENTS.md` and `CLAUDE.md` in every project. Both
+were excluded. This is very likely the origin of the Story 1.2 `AGENTS.md` artifact — a scaffolder
+convention, not a rogue worker. Recorded as evidence; no retroactive attribution asserted.
+
+### BLOCKER — shadcn/ui primitive library is undecided
+
+`shadcn init` requires an interactive choice that `-y` does **not** skip:
+
+```
+? Select a component library ›
+❯ Base UI (Recommended)
+  React Aria
+  Radix UI
+```
+
+Two failed attempts, both recorded honestly:
+1. `--base-color neutral` → `error: unknown option` (flag removed from the CLI). Nothing created.
+2. `-y --no-monorepo` → hung on the prompt above. Nothing created. **Both returned shell exit code
+   0 because the command was piped through `tail`** — a false green caught only by inspecting the
+   filesystem.
+
+`components.json` was never created and none of shadcn's dependencies (`clsx`, `tailwind-merge`,
+`class-variance-authority`, `lucide-react`) are installed.
+
+**Why this needs a user decision:** the approved Technology Stack says only "shadcn/ui" and
+`design.md` does not name a primitive library. Each option pulls a **different dependency tree** and
+determines the primitives under every FitOps component from here on; changing it later is expensive.
+CLAUDE.md §22 forbids new dependencies beyond the locked stack without approval. Not guessed.
+
 ### Last completed step
 
-"Verified the provisioning plan against the Technology Stack and ERD §25; started create-next-app."
+"Provisioned Next.js + Tailwind + TypeScript + the three approved libraries; shadcn init blocked on an undecided primitive library."
 
 ### Next step
 
-"Finish provisioning (deps + shadcn), then dispatch the single Story 1.3 implementation brief to Codex."
+"Await the user's shadcn primitive-library decision (Base UI / React Aria / Radix UI), finish provisioning, then dispatch the single Codex implementation brief."
 
 ---
 
