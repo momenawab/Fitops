@@ -136,8 +136,8 @@ Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Clau
 [x] T5  Session framework + cookie/CSRF security                                  Codex     ✅ PASS (ac106f1)
 [x] T6  PostgreSQL DATABASES from env                                             OpenCode/GLM  ✅ PASS (842440f) — live connection verified
 [x] T7  Email backend + SMTP from env                                             OpenCode/GLM  ✅ PASS (8182cab)
-[~] T8  Static/media handling                                                     OpenCode/GLM  DISPATCHED (holds settings lock)
-[ ] T9  Acceptance verification                                                   Claude    blocked on T1-T8
+[x] T8  Static/media handling                                                     OpenCode/GLM  ✅ PASS (fc76c76)
+[ ] T9  Acceptance verification                                                   Claude    READY — awaiting explicit user approval
 ```
 
 ### Approved scope decisions for this Story
@@ -348,6 +348,38 @@ only the plumbing so the decision can later be answered by environment variables
 test was attempted, by design; the probe used the unresolvable TLD `.invalid` so nothing could
 reach a real host.
 
+#### T8 review record (Master-executed) — commit `fc76c76`
+
+Reassigned AGY → OpenCode/GLM by user decision (AGY unavailable headless).
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Exact diff scope | 1 file; STATIC / MEDIA section only ✅ |
+| 2 | `check` default / dev / prod | `System check identified no issues (0 silenced).` ×3 |
+| 3 | STATIC_URL / STATIC_ROOT | `/static/` · `BASE_DIR/staticfiles` ✅ |
+| 4 | MEDIA_URL / MEDIA_ROOT | `/media/` · `BASE_DIR/mediafiles` ✅ |
+| 5 | Dev/prod separation | env override honoured in **both**: dev → `/srv/fitops/{static,media}`, prod → `/mnt/vol/{static,media}` ✅ |
+| 6 | No cloud/provider storage | boto3, django-storages, S3Boto3, minio, azure, gcloud, google.cloud, cloudflare, r2 all absent; **no `STORAGES` override** ✅ |
+| 7 | No new dependency | `requirements.txt` unchanged (Django, DRF, psycopg) ✅ |
+| 8 | No app/business logic | 0 files changed under `apps/` or `common/`; `common/storage/__init__.py` still 0 bytes; FileField, ImageField, Pillow, PIL, thumbnail, collectstatic, `static(` all absent ✅ |
+| 9 | No unrelated settings modified | urls.py / dev.py / prod.py untouched; DATABASES, SESSION_ENGINE, CSRF_COOKIE_HTTPONLY, EMAIL_BACKEND, REST_FRAMEWORK, LOCAL_APPS intact ✅ |
+| 10 | No secrets / hardcoded machine paths | no `/Users/` in any settings file; no `staticfiles/` or `mediafiles/` directory created ✅ |
+
+Resolved during review: the single `serve` grep hit is the word "ser**ver**" inside T7's SMTP
+comment — a substring false positive, not `django.views.static.serve`.
+
+**Design rationale recorded:** ROOTs are environment-driven because the filesystem location genuinely
+differs per deployment (Hetzner volume vs local dir); URLs are NOT, because they are path prefixes
+identical everywhere — making them configurable would be false configurability. No dev/prod
+overrides were added: the env-driven base values already serve both correctly.
+
+Phase 1 uses Django's default `FileSystemStorage`, matching the approved "Hetzner Volume / Local
+Storage" decision. The storage abstraction (`StorageService` / `LocalStorage` / `S3Storage`) remains
+unimplemented and is owned by a later Story.
+
+**Settings chain complete: T4 → T5 → T6 → T7 → T8 all landed. Settings lock permanently released
+for Story 1.2.**
+
 #### Worker environment limitation#### Worker environment limitation#### Worker environment limitation (important for future delegations)
 
 **Codex's sandbox had no outbound network access to PyPI.** It therefore could not install
@@ -373,11 +405,11 @@ would drift from it, and altering `CLAUDE.md` content is outside any worker's au
 
 ### Last completed step### Last completed step
 
-"T7 accepted by user as COMPLETE. T8 dispatched to OpenCode/GLM (reassigned from AGY) under the settings lock."
+"T8 reviewed and landed (fc76c76). All eight delegated tasks complete; settings chain finished."
 
 ### Next step
 
-"Review T8 (10 checks); if PASS, land it and STOP — T9 requires explicit user approval."
+"T9 — final Story 1.2 acceptance verification (Claude, not delegated). REQUIRES EXPLICIT USER APPROVAL before starting."
 
 ---
 
