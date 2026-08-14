@@ -133,8 +133,8 @@ Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Clau
 [x] T2  Nine canonical Django app packages                                        OpenCode/GLM  ✅ PASS (a2b8988, merged f4a0292)
 [x] T3  Register nine apps in INSTALLED_APPS                                      Codex     ✅ PASS (2bc78e3)
 [x] T4  DRF config (session auth + pagination)                                    Codex     ✅ PASS (56658c4)
-[~] T5  Session framework + cookie/CSRF security                                  Codex     DISPATCHED (holds settings lock)
-[ ] T6  PostgreSQL DATABASES from env                                             OpenCode  READY (awaiting approval)
+[x] T5  Session framework + cookie/CSRF security                                  Codex     ✅ PASS (ac106f1)
+[ ] T6  PostgreSQL DATABASES from env                                             OpenCode  NEXT — needs running PG server (unverified)
 [ ] T7  Email backend + SMTP from env                                             OpenCode  READY (awaiting approval)
 [ ] T8  Static/media handling                                                     OpenCode/GLM  reassigned from AGY (user decision)
 [ ] T9  Acceptance verification                                                   Claude    blocked on T1-T8
@@ -245,6 +245,43 @@ the final result passed review and every worktree was verified pristine beforeha
 Canonical order preserved: accounts, workspaces, coaching, clients, applications, commerce, billing,
 notifications, audit. `coaching` unsplit, `audit` present.
 
+#### T5 review record (Master-executed) — commit `ac106f1`
+
+Security-critical task. All eight required verifications run by Master:
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Exact diff scope | 3 files; `base.py` diff is **only** the SESSIONS & SECURITY section ✅ |
+| 2 | `manage.py check` default / dev / prod | `System check identified no issues (0 silenced).` ×3 |
+| 3 | Session auth is the only mechanism | `DRF auth = ['SessionAuthentication']` ✅ |
+| 4 | Cookie/security settings vs DB §5, §29 | see matrix below ✅ |
+| 5 | No custom session model | no `UserSession` class, no `token_hash` field, 0 models, 0 migrations ✅ |
+| 6 | No token/JWT | `jwt`, `authtoken`, `TokenAuthentication`, `simplejwt`, `oauth` all absent. Sole `Token` hit is `X-CSRFToken` in a comment ✅ |
+| 7 | No hardcoded secrets | none; only T1's pre-existing dev-only `django-insecure-` fallback ✅ |
+| 8 | No unrelated settings modified | REST_FRAMEWORK, DATABASE, EMAIL, STATIC banners all untouched ✅ |
+
+Cookie matrix as verified at runtime:
+
+| Setting | dev | prod |
+|---|---|---|
+| `SESSION_ENGINE` | `django.contrib.sessions.backends.db` | same |
+| `SESSION_COOKIE_HTTPONLY` | `True` (hardcoded) | `True` |
+| `SESSION_COOKIE_SECURE` | `False` | **`True` — hardcoded, not env-overridable** |
+| `CSRF_COOKIE_SECURE` | `False` | **`True` — hardcoded, not env-overridable** |
+| `SESSION_COOKIE_SAMESITE` / `CSRF_COOKIE_SAMESITE` | `Lax` | `Lax` |
+| `CSRF_COOKIE_HTTPONLY` | `False` (required — frontend reads csrftoken) | `False` |
+| `CSRF_TRUSTED_ORIGINS` | from env | from env |
+
+**Downgrade test:** prod was loaded with `SESSION_COOKIE_SECURE=False CSRF_COOKIE_SECURE=False` in
+the environment and still reported `True` for both. A misconfigured deployment cannot silently
+serve insecure cookies.
+
+**Master scope decisions (surfaced, not absorbed):** three items named in DB §5 were deliberately
+excluded from T5 as belonging to other Stories — authentication **rate limiting** (Epic 20), the
+**logout endpoint** (Epic 02; T5 is settings-only), and **SSL redirect / HSTS / security headers**
+(Nginx, Blueprint Story 21.2). `SESSION_COOKIE_AGE` was **not** set because no approved document
+specifies a session lifetime.
+
 #### Worker environment limitation#### Worker environment limitation#### Worker environment limitation (important for future delegations)
 
 **Codex's sandbox had no outbound network access to PyPI.** It therefore could not install
@@ -270,11 +307,11 @@ would drift from it, and altering `CLAUDE.md` content is outside any worker's au
 
 ### Last completed step### Last completed step
 
-"T3 accepted by user as COMPLETE. T5 dispatched to Codex under the settings lock."
+"T5 reviewed against DB §5 and §29 and landed (ac106f1); settings lock released."
 
 ### Next step
 
-"Review T5 against DB §5 and §29; if PASS, land it and STOP before T6."
+"T6 — PostgreSQL DATABASES from env (OpenCode/GLM, settings lock). Verify a running PostgreSQL server FIRST; if none, stop T6 and report the blocker."
 
 ---
 
