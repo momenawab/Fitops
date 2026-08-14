@@ -130,10 +130,10 @@ Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Clau
 
 ```
 [x] T1  Django skeleton + split settings + env loading + requirements + common/   Codex     ✅ PASS (89ea8e5)
-[~] T2  Nine canonical Django app packages                                        AGY       DISPATCHED (worktree t2-apps)
+[~] T2  Nine canonical Django app packages                                        OpenCode/GLM  RETRY 3 (AGY + OpenCode dispatch failures)
 [ ] T3  Register nine apps in INSTALLED_APPS                                      Codex     blocked on T2
-[~] T4  DRF config (session auth + pagination)                                    Codex     DISPATCHED (main tree, holds settings lock)
-[ ] T5  Session framework + cookie/CSRF security                                  Codex     READY (awaiting approval)
+[x] T4  DRF config (session auth + pagination)                                    Codex     ✅ PASS (56658c4)
+[ ] T5  Session framework + cookie/CSRF security                                  Codex     NEXT in settings chain (lock free)
 [ ] T6  PostgreSQL DATABASES from env                                             OpenCode  READY (awaiting approval)
 [ ] T7  Email backend + SMTP from env                                             OpenCode  READY (awaiting approval)
 [ ] T8  Static/media handling                                                     AGY       READY (awaiting approval)
@@ -176,20 +176,46 @@ and runs all gates that need them.
 
 #### T1 review record (Master-executed, not worker self-report)
 
-| Gate | Command | Result |
-|---|---|---|
-| Django version | `.venv/bin/python -c "import django; print(django.get_version())"` | `6.0.7` |
-| check (default→dev) | `.venv/bin/python backend/manage.py check` | `System check identified no issues (0 silenced).` |
-| check dev explicit | `... check --settings=config.settings.dev` | `System check identified no issues (0 silenced).` |
-| check prod | `DJANGO_SECRET_KEY=… ... check --settings=config.settings.prod` | `System check identified no issues (0 silenced).` |
-| prod refuses w/o secret | `... check --settings=config.settings.prod` (no env) | `ImproperlyConfigured: DJANGO_SECRET_KEY must be set in production.` ✅ intended |
-| dependency install | `.venv/bin/pip install -r backend/requirements.txt` | `Successfully installed Django-6.0.7 asgiref-3.12.1 djangorestframework-3.17.1 psycopg-3.3.4 sqlparse-0.6.0` |
-| `.venv` ignored | `git status --porcelain -uall \| grep .venv` | 0 entries ✅ |
-| forbidden config absent | grep for REST_FRAMEWORK, EMAIL_*, SESSION_COOKIE, CSRF_COOKIE, SECURE_SSL, MEDIA_ROOT, STATIC_ROOT, POSTGRES, ENGINE in `backend/config/` | all absent ✅ |
-| no apps created early | `ls backend/apps/` | only `.gitkeep` ✅ |
-| `common/` has zero logic | byte count of all 8 `__init__.py` | all 0 bytes ✅ |
+| Gate | Result |
+|---|---|
+| `pip install -r backend/requirements.txt` | `Successfully installed Django-6.0.7 asgiref-3.12.1 djangorestframework-3.17.1 psycopg-3.3.4 sqlparse-0.6.0` |
+| `manage.py check` dev / prod | `System check identified no issues (0 silenced).` (both) |
+| prod without `DJANGO_SECRET_KEY` | `ImproperlyConfigured: DJANGO_SECRET_KEY must be set in production.` ✅ intended |
+| `.venv` ignored · forbidden config absent · no apps early · `common/` 0-byte | all ✅ |
 
-#### Worker environment limitation (important for future delegations)
+#### T4 review record (Master-executed) — commit `56658c4`
+
+| Gate | Result |
+|---|---|
+| `manage.py check` dev / prod | `System check identified no issues (0 silenced).` (both) |
+| `rest_framework` in INSTALLED_APPS | `True` |
+| `LOCAL_APPS` still empty (T3's territory) | `True` ✅ |
+| auth classes | `['SessionAuthentication']` — matches locked Phase 1 auth decision |
+| permission classes | `['IsAuthenticated']` — deny-by-default |
+| paginator | `FitOpsPageNumberPagination` · page_size 20 · param `page_size` · max 100 |
+| EXCEPTION_HANDLER | DRF default — custom envelope correctly **deferred** ✅ |
+| throttle classes | `[]` — correctly not configured (Epic 20) |
+| scope | only the 2 allowed files; DATABASE/SESSIONS/EMAIL/STATIC sections untouched ✅ |
+
+**Master decision surfaced:** `DEFAULT_PERMISSION_CLASSES = IsAuthenticated` was specified by Master
+in the T4 brief as a deny-by-default security posture. Public endpoints (public coach portal, public
+application) must explicitly opt out per-view in their own Stories. **User may veto this default.**
+
+#### T2 dispatch failures — no code involved, worktree never touched
+
+| Attempt | Worker | Outcome |
+|---|---|---|
+| 1 | AGY | `failed`, exit 1, **0 files touched**. Headless mode hit a tool-permission prompt it cannot answer, auto-denied itself. Fixing needs either `--dangerously-skip-permissions` (a security escalation) or an allow-rule in the user's global `settings.json` — neither taken unilaterally. |
+| 2 | OpenCode (no model) | Refused to start: "no model given — opencode has no safe default". 0 files touched. |
+| 3 | OpenCode `zai-coding-plan/glm-5.2` | In flight. Model chosen from the user's own configured providers; "OpenCode / **GLM**" is the approved worker name, so a GLM model implements that choice. |
+
+Worktree `t2-apps` verified pristine before each re-dispatch, so no worker was ever sent into a
+dirty tree (Rule 12).
+
+**AGY is currently unusable headless.** This also blocks **T8**, which is assigned to AGY. Needs a
+user decision before T8: fix AGY's permission config, or reassign T8.
+
+#### Worker environment limitation#### Worker environment limitation (important for future delegations)
 
 **Codex's sandbox had no outbound network access to PyPI.** It therefore could not install
 dependencies or run `manage.py check`, and pinned `requirements.txt` to current stable PyPI versions
@@ -214,11 +240,11 @@ would drift from it, and altering `CLAUDE.md` content is outside any worker's au
 
 ### Last completed step### Last completed step
 
-"Wave 1 dispatched: T2 to AGY in isolated worktree, T4 to Codex holding the settings lock."
+"T4 reviewed and landed (56658c4); settings lock released. T2 re-dispatched to OpenCode/GLM after two dispatch failures."
 
 ### Next step
 
-"Review T2 and T4 results independently; land T4 first (main tree), then merge branch t2-apps."
+"Review T2 when OpenCode/GLM returns; if PASS, merge branch t2-apps into main, then T3."
 
 ---
 
