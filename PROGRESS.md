@@ -133,7 +133,7 @@ Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Clau
 [x] T2  Nine canonical Django app packages                                        OpenCode/GLM  ✅ PASS (a2b8988, merged f4a0292)
 [x] T3  Register nine apps in INSTALLED_APPS                                      Codex     ✅ PASS (2bc78e3)
 [x] T4  DRF config (session auth + pagination)                                    Codex     ✅ PASS (56658c4)
-[ ] T5  Session framework + cookie/CSRF security                                  Codex     READY — next in settings chain (lock free)
+[~] T5  Session framework + cookie/CSRF security                                  Codex     DISPATCHED (holds settings lock)
 [ ] T6  PostgreSQL DATABASES from env                                             OpenCode  READY (awaiting approval)
 [ ] T7  Email backend + SMTP from env                                             OpenCode  READY (awaiting approval)
 [ ] T8  Static/media handling                                                     OpenCode/GLM  reassigned from AGY (user decision)
@@ -270,11 +270,11 @@ would drift from it, and altering `CLAUDE.md` content is outside any worker's au
 
 ### Last completed step### Last completed step
 
-"T3 reviewed and landed (2bc78e3); settings lock released."
+"T3 accepted by user as COMPLETE. T5 dispatched to Codex under the settings lock."
 
 ### Next step
 
-"T5 — session framework + cookie/CSRF security settings (Codex, settings lock)."
+"Review T5 against DB §5 and §29; if PASS, land it and STOP before T6."
 
 ---
 
