@@ -26,14 +26,15 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
-| **Current Story** | Story 1.1 — Monorepo Setup (in progress) |
-| **Overall status** | Implementation started |
+| **Current Story** | Story 1.1 — Monorepo Setup — **COMPLETE** |
+| **Overall status** | Epic 01 in progress — 1 of 8 Stories complete |
 | **Last updated** | 2026-08-14 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
 
-**Repository state:** Story 1.1 in progress. Directory skeleton, `.gitignore`, `.env.example` and
-`README.md` created. Git repository not yet initialized. No application code yet
-(Django arrives in Story 1.2, Next.js in Story 1.3, `docker-compose.yml` in Story 1.6).
+**Repository state:** git repository initialized on branch `main`, one commit (`6d3eedd`), working
+tree clean. Monorepo skeleton, `.gitignore`, `.env.example` and `README.md` in place. **No
+application code yet** — Django arrives in Story 1.2, Next.js in Story 1.3, `docker-compose.yml` in
+Story 1.6.
 
 **Documentation baseline:** Architecture **v1.2.1** (approved and locked).
 
@@ -52,14 +53,52 @@ docs/03-development/fitops_development_blueprint_v1.md
 docs/04-design/design.md
 ```
 
-**Implementation has not been authorized to begin.** CLAUDE.md §25 states that Epic 01 must not
-start until the user explicitly says so. No agent may begin coding on its own initiative.
+**Implementation is authorized and has begun** (user instruction, 2026-08-14). Work proceeds one
+Story at a time; do not start the next Story without approval.
 
 ---
 
 ## Completed
 
-**None.** No Epic and no Story has been started or completed.
+### Story 1.1 — Monorepo Setup  (Epic 01 — Project Foundation)
+
+| Field | Value |
+|---|---|
+| **Status** | ✅ COMPLETE |
+| **Date** | 2026-08-14 |
+| **Commit** | `6d3eedd chore(repo): initialize fitops monorepo structure` |
+
+**Implementation summary:** initialized the git repository on branch `main` and created the monorepo
+skeleton defined in ERD/Repository Architecture §24, plus the root `README.md`, `.gitignore` and
+`.env.example`. No application code — this Story is structure and configuration only.
+
+**Files/modules changed:**
+
+- `README.md` — new. Product summary, documentation index, repository structure, stack table, local
+  setup instructions, environment-variable policy, contributing rules.
+- `.gitignore` — new. Ignores `.env` and every `.env.*` except `.env.example`, plus `*.pem`/`*.key`,
+  Python/Django, Node/Next.js, test/coverage, backup and editor artifacts.
+- `.env.example` — new. Placeholders only, grouped by the Story that consumes each variable
+  (Django core, session/CSRF security, PostgreSQL, Redis/Celery, SMTP email, media storage,
+  frontend).
+- `frontend/{app,components,features,lib,hooks,types}/.gitkeep` — new directories.
+- `backend/{config,apps,common,tests}/.gitkeep` — new directories.
+- `infrastructure/{docker,nginx,scripts,backups}/.gitkeep` — new directories.
+- `docs/` — unchanged; already matched ERD §24.
+
+**Tests/checks performed:** no automated test framework exists yet (Story 1.7). Verification was
+structural and executed against the real repository — see *Tests & Verification*. All three
+acceptance criteria and both DoD items verified and passing.
+
+**Acceptance criteria verification:**
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Repository structure matches architecture document | ✅ PASS | 15/15 required directories and 3/3 required root files present |
+| No secrets are committed | ✅ PASS | Only `.env.example` tracked; `.env` ignored via `.gitignore:4`; secret-pattern scan found nothing |
+| Local setup instructions exist | ✅ PASS | `README.md` "Local setup" section with prerequisites and clone/configure steps |
+| **DoD** — Clean clone can initialize successfully | ✅ PASS | Cloned to a temp dir; full structure present, no `.env`, `cp .env.example .env` succeeded and was correctly ignored |
+| **DoD** — README explains setup | ✅ PASS | Verified in the clone |
 
 Documentation work completed to date (not implementation — recorded for context only):
 
@@ -76,60 +115,9 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**Story: 1.1 — Monorepo Setup** (Epic 01 — Project Foundation)
+**No Story currently in progress.**
 
-### Progress
-
-```
-[x] Create frontend directory
-[x] Create backend directory
-[x] Create infrastructure directory
-[x] Create docs structure          (already existed and matches ERD §24)
-[x] Add .gitignore
-[x] Add .env.example
-[x] Add root README
-[ ] Initialize Git repository
-[ ] Verify acceptance criteria (structure, no secrets, clean clone)
-```
-
-### Completed
-
-- Directory skeleton created per ERD §24: `frontend/{app,components,features,lib,hooks,types}`,
-  `backend/{config,apps,common,tests}`, `infrastructure/{docker,nginx,scripts,backups}`.
-  Empty directories carry `.gitkeep` so git preserves them.
-- `.gitignore` — ignores `.env` and all `.env.*` except `.env.example`, plus Python/Django,
-  Node/Next.js, test/coverage, backup and editor artifacts.
-- `.env.example` — placeholders only, grouped by the Story that consumes each variable.
-- `README.md` — product summary, documentation index, repository structure, stack table, local
-  setup instructions, environment-variable policy, contributing rules.
-
-### Remaining
-
-- Initialize the git repository and create the initial commit.
-- Verify all three acceptance criteria and both DoD items.
-
-### Files currently being modified
-
-`.gitignore`, `.env.example`, `README.md`, `PROGRESS.md`, and `.gitkeep` placeholders under
-`frontend/`, `backend/`, `infrastructure/`.
-
-### Tests currently passing/failing
-
-No test framework exists yet — it is established in Story 1.7. Verification for this Story is
-structural and manual (see *Tests & Verification*).
-
-### Important context
-
-`docker-compose.yml` is **not** part of this Story — it belongs to Story 1.6. The Django project
-(1.2) and Next.js app (1.3) are likewise out of scope here.
-
-### Last completed step
-
-"Root README created with local setup instructions."
-
-### Next step
-
-"Initialize the git repository and create the initial commit"
+Story 1.1 is complete. Story 1.2 has **not** been started — it awaits approval.
 
 ---
 
@@ -137,25 +125,30 @@ structural and manual (see *Tests & Verification*).
 
 | Field | Value |
 |---|---|
-| **Epic** | To be determined from the Development Blueprint when implementation begins |
-| **Story ID** | To be determined from the Development Blueprint when implementation begins |
-| **Story title** | To be determined from the Development Blueprint when implementation begins |
+| **Epic** | Epic 01 — Project Foundation |
+| **Story ID** | Story 1.2 |
+| **Story title** | Django Backend Setup |
 
-**What the Blueprint documents** (cited, not selected): Development Blueprint §29 fixes the
-implementation order beginning with **01 Foundation**, and §6 (Epic 01 — Project Foundation) lists
-**Story 1.1 — Monorepo Setup** as its first Story, followed by 1.2 Django Backend Setup, 1.3 Next.js
-Frontend Setup, 1.4 PostgreSQL, 1.5 Redis + Celery, 1.6 Docker Compose, 1.7 Testing/Quality
-Baseline, 1.8 CI Pipeline.
+**Why it is next:** Blueprint §6 lists 1.2 immediately after 1.1 within Epic 01, and §29 fixes
+Foundation as the first block. Story 1.1 (its only prerequisite) is complete.
 
-**Dependencies:** none — Foundation is the root of the dependency graph (Blueprint §27).
+**Dependencies:** Story 1.1 — complete.
 
-**Prerequisite checks before any Story starts:**
+**Scope (Blueprint §6, quoted tasks):** initialize the Django project · configure Django REST
+Framework · create the approved apps · configure the settings structure · configure environment
+variables · configure PostgreSQL · configure static/media handling · configure Django's session
+framework · configure Django's email backend with SMTP settings sourced from environment variables.
 
-1. The user has **explicitly authorized** implementation to begin (CLAUDE.md §25).
-2. `CLAUDE.md`, this file, and `docs/MISSING_DECISIONS.md` have been read.
-3. The authoritative documents for the Story have been read (Blueprint §34 Rule 1).
-4. The Story does not depend on an unresolved item in `docs/MISSING_DECISIONS.md`.
-5. The Story has been broken into an explicit task checklist (see *Working Protocol* below).
+**Approved apps for 1.2:** `accounts`, `workspaces`, `coaching`, `clients`, `applications`,
+`commerce`, `billing`, `notifications`, `audit`.
+
+**Prerequisite checks before starting:**
+
+1. User approval to start Story 1.2 (do not start automatically).
+2. Python and PostgreSQL availability confirmed — **Unknown / not verified** in this environment.
+3. Re-read Blueprint §6 Story 1.2, Technology Stack (sessions, email), Database & Auth Architecture
+   §5 (Django session framework) and ERD §15–§23 (app boundaries).
+4. Note the ERD §24 discrepancy recorded under *Known Issues / Risks* before creating apps.
 
 ---
 
@@ -207,8 +200,11 @@ Documented risks carried from the architecture (context for a future agent, not 
 
 | Item | Impact | Related Story | Status | Suggested next action |
 |---|---|---|---|---|
+| **ERD §24 app list is stale** | The Repository Structure tree in ERD §24 still lists the pre-v1.1/v1.2 app set and omits `applications` and `billing`. ERD §15 and Blueprint Story 1.2 both list the full nine apps. Did **not** affect Story 1.1 (no apps created), but it will mislead Story 1.2 | 1.2 | **Open — reported, not fixed** | Ask the user to approve correcting the ERD §24 tree; do not change it unilaterally |
 | B24–B27 unresolved | Epic 22 billing Stories cannot be fully completed | 22.6, 22.9, 22.10b, 22.10c | Open — registered | Ask the user before those Stories begin |
 | SMTP provider unselected | None — env-configured | Epic 02 email Stories | Open by design | Configure at deployment |
+| Empty dirs use `.gitkeep` | Git cannot track empty directories; `.gitkeep` placeholders keep the ERD §24 skeleton in version control. They should be deleted as each directory gains real files | 1.2, 1.3 | Accepted convention | Remove each `.gitkeep` when its directory gets real content |
+| Runtime toolchain unverified | Python, Node, PostgreSQL, Docker availability in this environment is **Unknown / not verified** — Story 1.1 needed none of them | 1.2–1.6 | Unknown | Verify before starting Story 1.2 |
 
 Use this format for real issues once implementation starts:
 
@@ -219,27 +215,50 @@ Use this format for real issues once implementation starts:
 
 ## Tests & Verification
 
-**No tests have been executed.** No test suite, linter, formatter, or type checker exists yet —
-these are established in Blueprint Story 1.7 (Testing and Quality Baseline) and Story 1.8 (CI
-Pipeline).
+**No automated test framework exists yet** — it is established in Blueprint Story 1.7. Story 1.1
+introduced no application code to unit-test. Verification was structural and was **actually
+executed** against this repository on 2026-08-14.
 
-| Check | Command | Last run | Result |
-|---|---|---|---|
-| Backend tests | Not configured yet | Never | Not run |
-| Frontend tests | Not configured yet | Never | Not run |
-| Lint | Not configured yet | Never | Not run |
-| Format | Not configured yet | Never | Not run |
-| Type check | Not configured yet | Never | Not run |
-| E2E | Not configured yet | Never | Not run |
+| Check | Command / method | Result |
+|---|---|---|
+| Directory structure vs ERD §24 | Shell existence check over 15 required directories | ✅ 15/15 present |
+| Required root files | Existence check: `README.md`, `.gitignore`, `.env.example` | ✅ 3/3 present |
+| Tracked-file secret scan | `git ls-files` filtered for `.env*`, `*.pem`, `*.key`, `secret` | ✅ only `.env.example` |
+| `.env` ignore rule | `git check-ignore -v .env` | ✅ matched `.gitignore:4` |
+| Secret-pattern content scan | `git grep -nEi '(password\|secret\|api[_-]?key\|token)\s*[:=]…{20,}'` over non-docs files | ✅ no matches |
+| `.env.example` placeholders | Placeholder-pattern count | ✅ 12 placeholder lines, no real values |
+| **Clean clone (DoD)** | `git clone` to a temp dir, inspect tree | ✅ full structure present, no `.env` |
+| **Clone setup step (DoD)** | `cp .env.example .env` inside the clone | ✅ succeeded; new `.env` correctly ignored, tree clean |
+| README setup section | Grep for the "Local setup" section in the clone | ✅ present |
 
-**Never record a test as passing unless it was actually executed in this repository.** Paste or
-summarize real output. If a suite fails, say so plainly along with the failure.
+| Tooling check | Status |
+|---|---|
+| Backend tests | Not configured yet (Story 1.7) |
+| Frontend tests | Not configured yet (Story 1.7) |
+| Lint / format / type check | Not configured yet (Story 1.7) |
+| E2E | Not configured yet (Story 1.7) |
+
+**Known failing tests:** none — no test suite exists.
+
+**Never record a test as passing unless it was actually executed in this repository.**
 
 ---
 
 ## Files & Architecture Notes
 
-**No application code exists.** Nothing has been created to describe yet.
+**No application code exists yet.** Story 1.1 created structure and configuration only.
+
+Created in Story 1.1:
+
+- **`.gitignore`** — the `.env` rule is deliberately `.env` + `.env.*` with a `!.env.example`
+  negation, so any future `.env.local` / `.env.production` variant is ignored by default.
+  `infrastructure/backups/*` is ignored except its `.gitkeep`, so database dumps can never be
+  committed accidentally.
+- **`.env.example`** — grouped by consuming Story rather than alphabetically, so each Story knows
+  which block it owns. Variable names are a starting template and are finalized in Stories 1.2/1.4/1.5.
+- **`.gitkeep` placeholders** — the only reason empty directories survive in git. Delete each one
+  when its directory gains real files.
+- **Branch `main`** — repository initialized with `git init -b main`. No remote is configured.
 
 Structural facts a future agent needs (from the approved architecture — read the source documents
 for detail, do not rely on this summary):
@@ -270,34 +289,43 @@ from reading the code.
 3. `docs/MISSING_DECISIONS.md` — what must not be guessed.
 4. The authoritative documents for the current Story (Blueprint §2 lists the paths).
 
-**What was just completed:** documentation only. Architecture v1.2.1 is approved and locked, the
-missing-decisions registry exists, and this handoff file was created. **No application code has ever
-been written in this repository.**
+**What was just completed:** **Story 1.1 — Monorepo Setup** (Epic 01). The repository is now a git
+repository on branch `main` with one commit, `6d3eedd`. The ERD §24 skeleton, `README.md`,
+`.gitignore` and `.env.example` exist. All acceptance criteria and both DoD items were verified as
+passing against the real repository.
 
-**What should happen next:** nothing, until the user explicitly authorizes implementation to begin.
-When they do, take the next Story from the Development Blueprint order (§29 / §6), confirm it
-against the prerequisite checks in the *Next* section, and break it into a task checklist before
-coding.
+**What should happen next:** **Story 1.2 — Django Backend Setup**, but only after the user approves
+starting it. Do not start it automatically.
 
-**Currently dangerous to modify:** the approved documentation under `docs/`. It is locked at
-v1.2.1. Changing a model, endpoint, enum, or business rule there is not an implementation detail —
-it requires user approval and a matching documentation update in the same change (Blueprint Rule 9).
+**Currently dangerous to modify:**
 
-**Incomplete work:** none.
+- `docs/` — the approved architecture, locked at v1.2.1. Changing a model, endpoint, enum or
+  business rule requires user approval plus a documentation update in the same change
+  (Blueprint Rule 9).
+- `.gitignore` — the `.env` rules are a security control. Do not weaken them.
+- `.env.example` — placeholders only. Never put a real value in it.
 
-**Test command to run first:** none exists yet. The test baseline is created in Story 1.7.
+**Incomplete work:** none. Story 1.1 is fully complete; nothing was left half-done.
 
-**Non-obvious context:**
+**Test command to run first:** none exists yet. The test baseline is created in Story 1.7. To
+re-verify Story 1.1, run `git status` (expect a clean tree) and confirm `git ls-files` lists no
+`.env` other than `.env.example`.
 
-- This working directory is **not yet a git repository**. Initializing it is part of Story 1.1 — do
-  not initialize it early or unprompted.
+**Non-obvious context for the next agent:**
+
+- **ERD §24's app list is stale** — its Repository Structure tree omits `applications` and
+  `billing`. ERD §15 and Blueprint Story 1.2 both list the full nine apps. **Use the nine-app list**
+  (`accounts`, `workspaces`, `coaching`, `clients`, `applications`, `commerce`, `billing`,
+  `notifications`, `audit`). This was reported, not silently fixed — see *Known Issues / Risks*.
+- `docker-compose.yml` is intentionally absent. It belongs to Story 1.6, not 1.1.
+- `.gitkeep` files are placeholders only. Delete each one once its directory holds real files.
 - The user works in strict approval gates. Report gaps and stop; never fill a gap with a sensible
-  default. This applies to architecture questions and to unresolved decisions alike.
+  default. This applies to architecture questions and to `docs/MISSING_DECISIONS.md` items alike.
 - Epic numbering: Epics 01–21 are the v1.1 canonical list (Orders and Payments are **one** Epic, 08).
   Epic 22 (FitOps Billing & Subscriptions) was added in v1.2. Blueprint §29 is a finer-grained
   sequence, **not** a second Epic list.
-- The `docs/` tree was restructured and the files renamed to `fitops_*`; any older path or
-  "Coaching SaaS" filename reference you encounter elsewhere is stale.
+- Runtime toolchain availability (Python, Node, PostgreSQL, Docker) in this environment is
+  **Unknown / not verified** — Story 1.1 required none of it. Verify before Story 1.2.
 
 ---
 
