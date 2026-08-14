@@ -167,7 +167,17 @@ CSRF_COOKIE_HTTPONLY = False
 # --------------------------------------------------------------------
 # EMAIL
 # --------------------------------------------------------------------
-# Configured in task T7 (Django email backend + SMTP from environment).
+# The SMTP provider is deliberately unselected (docs/MISSING_DECISIONS.md);
+# it is deployment configuration supplied per environment. All values below
+# default to empty/neutral so no provider is implied. Application code must
+# send mail through Django's email API only — never a provider SDK.
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = env("EMAIL_HOST", "")
+EMAIL_PORT = int(env("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "")
 
 
 # --------------------------------------------------------------------

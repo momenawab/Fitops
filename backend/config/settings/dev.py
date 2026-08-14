@@ -15,3 +15,6 @@ ALLOWED_HOSTS = env_list(  # noqa: F405
 
 SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
+
+# Print emails to stdout — developers need no SMTP server.
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
