@@ -134,8 +134,8 @@ Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Clau
 [x] T3  Register nine apps in INSTALLED_APPS                                      Codex     ✅ PASS (2bc78e3)
 [x] T4  DRF config (session auth + pagination)                                    Codex     ✅ PASS (56658c4)
 [x] T5  Session framework + cookie/CSRF security                                  Codex     ✅ PASS (ac106f1)
-[ ] T6  PostgreSQL DATABASES from env                                             OpenCode  NEXT — needs running PG server (unverified)
-[ ] T7  Email backend + SMTP from env                                             OpenCode  READY (awaiting approval)
+[x] T6  PostgreSQL DATABASES from env                                             OpenCode/GLM  ✅ PASS (842440f) — live connection verified
+[ ] T7  Email backend + SMTP from env                                             OpenCode/GLM  READY — next in settings chain
 [ ] T8  Static/media handling                                                     OpenCode/GLM  reassigned from AGY (user decision)
 [ ] T9  Acceptance verification                                                   Claude    blocked on T1-T8
 ```
@@ -282,6 +282,43 @@ excluded from T5 as belonging to other Stories — authentication **rate limitin
 (Nginx, Blueprint Story 21.2). `SESSION_COOKIE_AGE` was **not** set because no approved document
 specifies a session lifetime.
 
+#### T6 review record (Master-executed) — commit `842440f`
+
+**PostgreSQL availability confirmed BEFORE implementation** (client-vs-server distinction respected):
+
+| Probe | Result |
+|---|---|
+| TCP 5432 listener | `postgres` PID 3454 on `127.0.0.1:5432` and `[::1]:5432` ✅ |
+| Server processes | walwriter, background writer, autovacuum, logical replication launcher ✅ |
+| Unix socket | `/tmp/.s.PGSQL.5432` ✅ |
+| Service | `postgresql@16 started` (brew) ✅ |
+| Live query | `PostgreSQL 16.13 (Homebrew) on aarch64-apple-darwin25.2.0` ✅ |
+
+| Gate | Result |
+|---|---|
+| diff scope | one file; only the DATABASE section (14 changed lines) ✅ |
+| `check` default / dev / prod | `System check identified no issues (0 silenced).` ×3 |
+| engine | `django.db.backends.postgresql`, exactly the six keys, no extras ✅ |
+| PASSWORD default | empty string, no hardcoded credential ✅ |
+| **REAL connection (Master-run)** | `SERVER: PostgreSQL 16.13 …` · `CONNECTED AS: ('postgres','momen')` · round-trip `SELECT 1+1 → 2` · `vendor=postgresql driver=psycopg` ✅ |
+| models / migrations / `migrate` | 0 / 0 / not run ✅ |
+| SQLite fallback | absent ✅ |
+| new db libs (dj-database-url, psycopg2, django-environ) | absent ✅ |
+| infrastructure/Docker touched | none ✅ |
+| other sections intact | SESSION_ENGINE, CSRF_COOKIE_HTTPONLY, REST_FRAMEWORK, LOCAL_APPS all present ✅ |
+
+**Story 1.2 AC #2 "Database connection works" is now EMPIRICALLY VERIFIED by Master**, not accepted
+on a worker's report.
+
+**Scope boundary honoured:** the `fitops` database and `fitops` role do **not** exist on this
+machine — re-confirmed as absent after the task ran. Creating the development database is Blueprint
+**Story 1.4** ("Configure development database"). The live-connection proof therefore used an env
+override against the existing `postgres` database as role `momen`, creating nothing.
+
+**Carry-forward for Story 1.4:** it must create role `fitops` and database `fitops` (or the `.env`
+must be pointed at an existing database) before `migrate` can run. Existing databases: `couch`,
+`erp`, `postgres`. Existing roles: `momen`, `erp`.
+
 #### Worker environment limitation#### Worker environment limitation#### Worker environment limitation (important for future delegations)
 
 **Codex's sandbox had no outbound network access to PyPI.** It therefore could not install
@@ -307,11 +344,11 @@ would drift from it, and altering `CLAUDE.md` content is outside any worker's au
 
 ### Last completed step### Last completed step
 
-"T5 reviewed against DB §5 and §29 and landed (ac106f1); settings lock released."
+"T6 reviewed and landed (842440f); real PostgreSQL connection verified by Master; settings lock released."
 
 ### Next step
 
-"T6 — PostgreSQL DATABASES from env (OpenCode/GLM, settings lock). Verify a running PostgreSQL server FIRST; if none, stop T6 and report the blocker."
+"T7 — Django email backend + SMTP from env (OpenCode/GLM, settings lock)."
 
 ---
 
