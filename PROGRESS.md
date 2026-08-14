@@ -258,36 +258,35 @@ though Blueprint Story 1.7 owns the lint/format/typecheck *baseline*. Flagged to
 | `create-next-app` scaffold | ✅ Next.js 16.3.1, React 19.2.8, Tailwind 4, TypeScript 5, ESLint 9 |
 | Scaffold moved into `frontend/` | ✅ 6 files deliberately excluded (`.git`, `.next`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`) |
 | `react-hook-form` + `zod` + `@tanstack/react-query` | ✅ 7.85.0 / 4.4.3 / 5.101.4 |
-| `shadcn init` | ❌ **BLOCKED** — see below |
+| `shadcn init` | Radix UI approved by user 2026-08-14; running |
 
 **Note:** `create-next-app` now generates its own `AGENTS.md` and `CLAUDE.md` in every project. Both
 were excluded. This is very likely the origin of the Story 1.2 `AGENTS.md` artifact — a scaffolder
 convention, not a rogue worker. Recorded as evidence; no retroactive attribution asserted.
 
-### BLOCKER — shadcn/ui primitive library is undecided
+### RESOLVED — shadcn/ui primitive library: **Radix UI** (user decision, 2026-08-14)
 
-`shadcn init` requires an interactive choice that `-y` does **not** skip:
+**Approved: `shadcn/ui` → Radix UI primitives.** Base UI and React Aria are explicitly rejected.
 
-```
-? Select a component library ›
-❯ Base UI (Recommended)
-  React Aria
-  Radix UI
-```
+This is the foundation under every FitOps component from here on. It is recorded here as an
+implementation decision; the architecture documents were **not** modified, since the Technology Stack
+already names "shadcn/ui" and no approved document specifies a primitive library.
 
-Two failed attempts, both recorded honestly:
+Initialized with `npx shadcn@latest init -b radix -y --no-monorepo`.
+
+#### Two failed init attempts before this (recorded for accuracy)
+
 1. `--base-color neutral` → `error: unknown option` (flag removed from the CLI). Nothing created.
-2. `-y --no-monorepo` → hung on the prompt above. Nothing created. **Both returned shell exit code
-   0 because the command was piped through `tail`** — a false green caught only by inspecting the
-   filesystem.
+2. `-y --no-monorepo` → hung on an interactive "Select a component library" prompt that `-y` does
+   not skip. Nothing created.
 
-`components.json` was never created and none of shadcn's dependencies (`clsx`, `tailwind-merge`,
-`class-variance-authority`, `lucide-react`) are installed.
+**Both returned shell exit code 0 because the command was piped through `tail`** — the wrapper
+succeeded while the tool did nothing. Caught only by inspecting the filesystem
+(`components.json` absent, no shadcn dependencies installed).
 
-**Why this needs a user decision:** the approved Technology Stack says only "shadcn/ui" and
-`design.md` does not name a primitive library. Each option pulls a **different dependency tree** and
-determines the primitives under every FitOps component from here on; changing it later is expensive.
-CLAUDE.md §22 forbids new dependencies beyond the locked stack without approval. Not guessed.
+**Process lesson: never read a piped command's exit code as the tool's exit code.** Subsequent runs
+use `set -o pipefail` and an explicit exit-code echo, and every provisioning step is confirmed
+against the filesystem rather than against a status line.
 
 ### Last completed step
 
