@@ -54,7 +54,17 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     "rest_framework",
 ]
-LOCAL_APPS = []  # the nine FitOps apps added in task T3
+LOCAL_APPS = [
+    "apps.accounts",
+    "apps.workspaces",
+    "apps.coaching",
+    "apps.clients",
+    "apps.applications",
+    "apps.commerce",
+    "apps.billing",
+    "apps.notifications",
+    "apps.audit",
+]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
