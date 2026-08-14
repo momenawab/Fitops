@@ -51,7 +51,9 @@ DJANGO_APPS = [
     "django.contrib.staticfiles",
 ]
 
-THIRD_PARTY_APPS = []  # rest_framework added in task T4
+THIRD_PARTY_APPS = [
+    "rest_framework",
+]
 LOCAL_APPS = []  # the nine FitOps apps added in task T3
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -143,4 +145,13 @@ STATIC_URL = "static/"
 # --------------------------------------------------------------------
 # REST FRAMEWORK
 # --------------------------------------------------------------------
-# Configured in task T4 (Django REST Framework settings).
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_PAGINATION_CLASS": "common.pagination.FitOpsPageNumberPagination",
+    "PAGE_SIZE": 20,
+}
