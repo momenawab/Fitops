@@ -136,7 +136,7 @@ Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Clau
 [x] T5  Session framework + cookie/CSRF security                                  Codex     ✅ PASS (ac106f1)
 [x] T6  PostgreSQL DATABASES from env                                             OpenCode/GLM  ✅ PASS (842440f) — live connection verified
 [x] T7  Email backend + SMTP from env                                             OpenCode/GLM  ✅ PASS (8182cab)
-[ ] T8  Static/media handling                                                     OpenCode/GLM  READY — last settings-chain task
+[~] T8  Static/media handling                                                     OpenCode/GLM  DISPATCHED (holds settings lock)
 [ ] T9  Acceptance verification                                                   Claude    blocked on T1-T8
 ```
 
@@ -373,11 +373,11 @@ would drift from it, and altering `CLAUDE.md` content is outside any worker's au
 
 ### Last completed step### Last completed step
 
-"T7 reviewed and landed (8182cab); settings lock released."
+"T7 accepted by user as COMPLETE. T8 dispatched to OpenCode/GLM (reassigned from AGY) under the settings lock."
 
 ### Next step
 
-"T8 — static/media handling (OpenCode/GLM, settings lock), the last settings-chain task."
+"Review T8 (10 checks); if PASS, land it and STOP — T9 requires explicit user approval."
 
 ---
 
