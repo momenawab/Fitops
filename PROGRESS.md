@@ -135,8 +135,8 @@ Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Clau
 [x] T4  DRF config (session auth + pagination)                                    Codex     ✅ PASS (56658c4)
 [x] T5  Session framework + cookie/CSRF security                                  Codex     ✅ PASS (ac106f1)
 [x] T6  PostgreSQL DATABASES from env                                             OpenCode/GLM  ✅ PASS (842440f) — live connection verified
-[~] T7  Email backend + SMTP from env                                             OpenCode/GLM  DISPATCHED (holds settings lock)
-[ ] T8  Static/media handling                                                     OpenCode/GLM  reassigned from AGY (user decision)
+[x] T7  Email backend + SMTP from env                                             OpenCode/GLM  ✅ PASS (8182cab)
+[ ] T8  Static/media handling                                                     OpenCode/GLM  READY — last settings-chain task
 [ ] T9  Acceptance verification                                                   Claude    blocked on T1-T8
 ```
 
@@ -319,6 +319,35 @@ override against the existing `postgres` database as role `momen`, creating noth
 must be pointed at an existing database) before `migrate` can run. Existing databases: `couch`,
 `erp`, `postgres`. Existing roles: `momen`, `erp`.
 
+#### T7 review record (Master-executed) — commit `8182cab`
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Exact diff scope | 2 files; `base.py` EMAIL section + one line in `dev.py` ✅ |
+| 2 | `check` default / dev / prod | `System check identified no issues (0 silenced).` ×3 |
+| 3 | Django SMTP backend | base = `django.core.mail.backends.smtp.EmailBackend` ✅ |
+| 4 | Env-driven host/port/user/password/TLS/from | injected `smtp.example.invalid:2525`, TLS False, custom from-address — all honoured end to end ✅ |
+| 5 | No hardcoded credentials | every value via `env()` with empty default; **no email address literal anywhere in backend/*.py** ✅ |
+| 6 | No provider-specific implementation | sendgrid, mailgun, postmark, amazonses, ses, gmail, resend, brevo, mailtrap, anymail, sparkpost, mandrill — all absent; `requirements.txt` unchanged (Django, DRF, psycopg only) ✅ |
+| 7 | No unrelated settings changed | `prod.py` untouched; DATABASES, SESSION_ENGINE, CSRF_COOKIE_HTTPONLY, REST_FRAMEWORK, LOCAL_APPS, STATIC_URL all intact ✅ |
+| 8 | No email business logic | `send_mail`, `EmailMessage`, `EmailMultiAlternatives`, `get_connection`, `shared_task` all absent; 0 files under `backend/apps` changed; no templates dir ✅ |
+
+Resolved during review: the two `mail.` grep hits are Django's own dotted backend paths
+(`django.core.mail.backends.{smtp,console}.EmailBackend`) — legitimate, not provider code.
+
+| Setting | dev | base/prod |
+|---|---|---|
+| `EMAIL_BACKEND` | console (built-in, no dependency) | `smtp.EmailBackend` |
+| `EMAIL_HOST` / `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | `''` | from env, `''` default |
+| `EMAIL_PORT` | `587` (int) | from env, int-coerced |
+| `EMAIL_USE_TLS` | `True` | from env, default True |
+| `DEFAULT_FROM_EMAIL` | `''` | from env, `''` default |
+
+**MISSING_DECISIONS.md unchanged — the SMTP provider remains deliberately unresolved.** T7 built
+only the plumbing so the decision can later be answered by environment variables alone. No delivery
+test was attempted, by design; the probe used the unresolvable TLD `.invalid` so nothing could
+reach a real host.
+
 #### Worker environment limitation#### Worker environment limitation#### Worker environment limitation (important for future delegations)
 
 **Codex's sandbox had no outbound network access to PyPI.** It therefore could not install
@@ -344,11 +373,11 @@ would drift from it, and altering `CLAUDE.md` content is outside any worker's au
 
 ### Last completed step### Last completed step
 
-"T6 accepted by user as COMPLETE. T7 dispatched to OpenCode/GLM under the settings lock."
+"T7 reviewed and landed (8182cab); settings lock released."
 
 ### Next step
 
-"Review T7: verify wiring only (no provider chosen, no delivery test); if PASS, land and STOP before T8."
+"T8 — static/media handling (OpenCode/GLM, settings lock), the last settings-chain task."
 
 ---
 
