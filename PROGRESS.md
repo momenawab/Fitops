@@ -26,8 +26,8 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
-| **Current Story** | Story 1.2 — Django Backend Setup — **COMPLETE** |
-| **Overall status** | Epic 01 in progress — 2 of 8 Stories complete |
+| **Current Story** | Story 1.3 — Next.js Frontend Setup — **BLOCKED (pre-implementation)** |
+| **Overall status** | Epic 01 in progress — 2 of 8 Stories complete; 1.3 blocked on a delegation constraint |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-14 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -207,9 +207,48 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.**
+**Story: 1.3 — Next.js Frontend Setup** — **BLOCKED before implementation. Nothing implemented.**
 
-Story 1.2 is COMPLETE and accepted. Story 1.3 has **not** been started — it awaits approval.
+### Acceptance criteria (Blueprint §6)
+
+- Frontend builds successfully.
+- Development server works.
+- Basic application shell exists.
+
+### Blocker — worker sandbox has no network
+
+Story 1.3 is inherently network-dependent: "Initialize Next.js", Tailwind, shadcn/ui, React Hook
+Form, Zod and TanStack Query all require downloading packages.
+
+**Empirically verified 2026-08-14** with a read-only Codex probe (touched 0 files):
+
+```
+npm view next version          -> (no output)
+curl https://registry.npmjs.org/next -> curl: (6) Could not resolve host: registry.npmjs.org
+NETWORK: NO   NPM REGISTRY REACHABLE: NO
+```
+
+This confirms and generalises the T1 finding (which was PyPI): **the Codex sandbox has no outbound
+network at all.** `~/.codex/config.toml` has no `network_access` setting, and the relay's only
+network-permitting mode is `--sandbox danger-full-access` — a security escalation not taken
+unilaterally.
+
+Master **does** have network (`registry.npmjs.org` reachable), which is how Story 1.2's Python
+dependencies were installed.
+
+### Status
+
+Reported to the user per the Story-1.3 instruction: *"If a genuinely separate blocker appears: STOP
+and report it instead of silently expanding scope."* No brief dispatched, no implementation started,
+no files changed. Awaiting a decision on how to split the network-bound step.
+
+### Last completed step
+
+"Verified Story 1.3 scope from the Blueprint and ERD §25; empirically confirmed the worker sandbox has no network."
+
+### Next step
+
+"Await user decision on the network-bound scaffolding step, then dispatch the single Story 1.3 implementation brief."
 
 ---
 
