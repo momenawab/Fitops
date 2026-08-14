@@ -130,8 +130,8 @@ Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Clau
 
 ```
 [x] T1  Django skeleton + split settings + env loading + requirements + common/   Codex     ✅ PASS (89ea8e5)
-[~] T2  Nine canonical Django app packages                                        OpenCode/GLM  RETRY 3 (AGY + OpenCode dispatch failures)
-[ ] T3  Register nine apps in INSTALLED_APPS                                      Codex     blocked on T2
+[x] T2  Nine canonical Django app packages                                        OpenCode/GLM  ✅ PASS (a2b8988, merged f4a0292)
+[ ] T3  Register nine apps in INSTALLED_APPS                                      Codex     READY (T2 landed; needs settings lock)
 [x] T4  DRF config (session auth + pagination)                                    Codex     ✅ PASS (56658c4)
 [ ] T5  Session framework + cookie/CSRF security                                  Codex     NEXT in settings chain (lock free)
 [ ] T6  PostgreSQL DATABASES from env                                             OpenCode  READY (awaiting approval)
@@ -201,21 +201,35 @@ and runs all gates that need them.
 in the T4 brief as a deny-by-default security posture. Public endpoints (public coach portal, public
 application) must explicitly opt out per-view in their own Stories. **User may veto this default.**
 
-#### T2 dispatch failures — no code involved, worktree never touched
+#### T2 review record (Master-executed) — commit `a2b8988`, merged `f4a0292`
+
+| Gate | Result |
+|---|---|
+| file inventory | 28 files under `backend/apps` (1 + 9×3) ✅ · 9 app dirs ✅ |
+| unexpected modules (models/views/admin/tests/urls/serializers) | none ✅ |
+| all `__init__.py` empty | 0 non-empty ✅ |
+| AppConfig dotted names | all nine resolve as `apps.<name>` with `BigAutoField` ✅ |
+| canonical list | accounts, applications, audit, billing, clients, coaching, commerce, notifications, workspaces — no extras, no omissions; `coaching` unsplit, `audit` present ✅ |
+| scope | nothing outside `backend/apps/` touched ✅ |
+| post-merge `manage.py check` dev/prod | `System check identified no issues (0 silenced).` (both) ✅ |
+| T4 config survived merge · LOCAL_APPS still empty | ✅ |
+
+Worktree `t2-apps` merged with `--no-ff`, then worktree and branch removed. Main tree clean.
+
+#### T2 dispatch failures — three attempts, no code involved in the first two
 
 | Attempt | Worker | Outcome |
 |---|---|---|
-| 1 | AGY | `failed`, exit 1, **0 files touched**. Headless mode hit a tool-permission prompt it cannot answer, auto-denied itself. Fixing needs either `--dangerously-skip-permissions` (a security escalation) or an allow-rule in the user's global `settings.json` — neither taken unilaterally. |
+| 1 | AGY | `failed`, exit 1, **0 files touched**. Headless mode hit a tool-permission prompt it cannot answer and auto-denied itself. Fix needs `--dangerously-skip-permissions` (security escalation) or an allow-rule in the user's global `settings.json` — neither taken unilaterally. |
 | 2 | OpenCode (no model) | Refused to start: "no model given — opencode has no safe default". 0 files touched. |
-| 3 | OpenCode `zai-coding-plan/glm-5.2` | In flight. Model chosen from the user's own configured providers; "OpenCode / **GLM**" is the approved worker name, so a GLM model implements that choice. |
+| 3 | OpenCode `zai-coding-plan/glm-5.2` | ✅ Succeeded. Model chosen from the user's own configured providers; "OpenCode / **GLM**" is the approved worker name. |
 
-Worktree `t2-apps` verified pristine before each re-dispatch, so no worker was ever sent into a
-dirty tree (Rule 12).
+Worktree verified pristine before every re-dispatch, so no worker entered a dirty tree (Rule 12).
 
-**AGY is currently unusable headless.** This also blocks **T8**, which is assigned to AGY. Needs a
-user decision before T8: fix AGY's permission config, or reassign T8.
+**AGY remains unusable headless — this blocks T8, which is assigned to AGY.** User decision needed
+before T8: fix AGY's permission config, or reassign T8.
 
-#### Worker environment limitation#### Worker environment limitation (important for future delegations)
+#### Worker environment limitation#### Worker environment limitation#### Worker environment limitation (important for future delegations)
 
 **Codex's sandbox had no outbound network access to PyPI.** It therefore could not install
 dependencies or run `manage.py check`, and pinned `requirements.txt` to current stable PyPI versions
@@ -240,11 +254,11 @@ would drift from it, and altering `CLAUDE.md` content is outside any worker's au
 
 ### Last completed step### Last completed step
 
-"T4 reviewed and landed (56658c4); settings lock released. T2 re-dispatched to OpenCode/GLM after two dispatch failures."
+"T2 reviewed, committed in worktree, merged to main (f4a0292); worktree removed. Wave 1 complete."
 
 ### Next step
 
-"Review T2 when OpenCode/GLM returns; if PASS, merge branch t2-apps into main, then T3."
+"Await approval, then T3 (register the nine apps in INSTALLED_APPS, Codex, settings lock)."
 
 ---
 
