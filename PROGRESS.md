@@ -26,8 +26,8 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
-| **Current Story** | Story 1.3 — Next.js Frontend Setup — **BLOCKED (pre-implementation)** |
-| **Overall status** | Epic 01 in progress — 2 of 8 Stories complete; 1.3 blocked on a delegation constraint |
+| **Current Story** | Story 1.3 — Next.js Frontend Setup — **IN PROGRESS** |
+| **Overall status** | Epic 01 in progress — 2 of 8 Stories complete; 1.3 started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-14 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -207,7 +207,10 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**Story: 1.3 — Next.js Frontend Setup** — **BLOCKED before implementation. Nothing implemented.**
+**Story: 1.3 — Next.js Frontend Setup** (Epic 01 — Project Foundation)
+
+Started 2026-08-14. **Option A execution model, user-approved:** Master performs only the
+network-dependent provisioning, then **one** bounded implementation task goes to Codex.
 
 ### Acceptance criteria (Blueprint §6)
 
@@ -215,38 +218,50 @@ Documentation work completed to date (not implementation — recorded for contex
 - Development server works.
 - Basic application shell exists.
 
-### Blocker — worker sandbox has no network
+### Blocker resolved by Option A
 
-Story 1.3 is inherently network-dependent: "Initialize Next.js", Tailwind, shadcn/ui, React Hook
-Form, Zod and TanStack Query all require downloading packages.
+The Codex sandbox has **no outbound network** — verified empirically with a read-only probe
+(`curl: (6) Could not resolve host: registry.npmjs.org`, 0 files touched). Story 1.3 requires package
+downloads, so Master provisions and Codex implements. `--sandbox danger-full-access`,
+`--dangerously-skip-permissions` and AGY headless are all **prohibited** by user decision.
 
-**Empirically verified 2026-08-14** with a read-only Codex probe (touched 0 files):
+### Task board
 
 ```
-npm view next version          -> (no output)
-curl https://registry.npmjs.org/next -> curl: (6) Could not resolve host: registry.npmjs.org
-NETWORK: NO   NPM REGISTRY REACHABLE: NO
+[~] P   Master provisioning (network only)      Claude   IN PROGRESS
+[ ] I   Story 1.3 implementation (ONE task)     Codex    blocked on P
+[ ] R   Master review + final acceptance        Claude   blocked on I
 ```
 
-This confirms and generalises the T1 finding (which was PyPI): **the Codex sandbox has no outbound
-network at all.** `~/.codex/config.toml` has no `network_access` setting, and the relay's only
-network-permitting mode is `--sandbox danger-full-access` — a security escalation not taken
-unilaterally.
+### Master provisioning scope — verified against the approved stack
 
-Master **does** have network (`registry.npmjs.org` reachable), which is how Story 1.2's Python
-dependencies were installed.
+| Command | Justification |
+|---|---|
+| `create-next-app --ts --tailwind --eslint --app --no-src-dir --import-alias "@/*" --use-npm` | Technology Stack "Next.js + TypeScript", "Tailwind CSS"; App Router required by ERD §25 route groups `(marketing)` / `[workspaceSlug]`; no `src/` because ERD §25 shows `frontend/app/` |
+| `npm install react-hook-form zod @tanstack/react-query` | Technology Stack "Forms: React Hook Form", "Zod", "Server State: TanStack Query" |
+| `npx shadcn@latest init` | Technology Stack "shadcn/ui"; brings lucide-react, mandated by design.md §25 |
 
-### Status
+Scaffolded into a temp directory first, because `create-next-app` refuses a non-empty target and
+`frontend/` holds Story 1.1 `.gitkeep` placeholders. **Master deletes nothing** — placeholders merge
+and their cleanup belongs to Codex.
 
-Reported to the user per the Story-1.3 instruction: *"If a genuinely separate blocker appears: STOP
-and report it instead of silently expanding scope."* No brief dispatched, no implementation started,
-no files changed. Awaiting a decision on how to split the network-bound step.
+**Nothing else installed:** no Prettier, no test libraries, no state managers, no HTTP clients, no
+component kits.
+
+**Judgment surfaced:** `--eslint` included because it is part of the official Next.js scaffold, even
+though Blueprint Story 1.7 owns the lint/format/typecheck *baseline*. Flagged to the user.
 
 ### Last completed step
 
-"Verified Story 1.3 scope from the Blueprint and ERD §25; empirically confirmed the worker sandbox has no network."
+"Verified the provisioning plan against the Technology Stack and ERD §25; started create-next-app."
 
 ### Next step
+
+"Finish provisioning (deps + shadcn), then dispatch the single Story 1.3 implementation brief to Codex."
+
+---
+
+## Next step
 
 "Await user decision on the network-bound scaffolding step, then dispatch the single Story 1.3 implementation brief."
 
