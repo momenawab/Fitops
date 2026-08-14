@@ -12,3 +12,6 @@ ALLOWED_HOSTS = env_list(  # noqa: F405
     "DJANGO_ALLOWED_HOSTS",
     ["localhost", "127.0.0.1"],
 )
+
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False

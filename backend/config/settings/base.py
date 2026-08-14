@@ -143,7 +143,17 @@ STATIC_URL = "static/"
 # --------------------------------------------------------------------
 # SESSIONS & SECURITY
 # --------------------------------------------------------------------
-# Configured in task T5 (Django sessions and security settings).
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
+
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", False)
+SESSION_COOKIE_SAMESITE = env("SESSION_COOKIE_SAMESITE", "Lax")
+
+CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", False)
+CSRF_COOKIE_SAMESITE = SESSION_COOKIE_SAMESITE
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
+# Next.js reads csrftoken so it can send X-CSRFToken on state-changing requests.
+CSRF_COOKIE_HTTPONLY = False
 
 
 # --------------------------------------------------------------------

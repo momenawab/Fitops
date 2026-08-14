@@ -11,3 +11,7 @@ if not SECRET_KEY:
 
 DEBUG = False
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS")  # noqa: F405
+
+# Deliberately not env-overridable: production cookies must always be secure.
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
