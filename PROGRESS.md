@@ -26,8 +26,8 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
-| **Current Story** | Story 1.2 — Django Backend Setup — **IN PROGRESS** |
-| **Overall status** | Epic 01 in progress — 1 of 8 Stories complete, 1.2 started |
+| **Current Story** | Story 1.2 — Django Backend Setup — **COMPLETE** |
+| **Overall status** | Epic 01 in progress — 2 of 8 Stories complete |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-14 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -60,6 +60,97 @@ Story at a time; do not start the next Story without approval.
 ---
 
 ## Completed
+
+### Story 1.2 — Django Backend Setup  (Epic 01 — Project Foundation)
+
+| Field | Value |
+|---|---|
+| **Status** | ✅ COMPLETE |
+| **Date** | 2026-08-14 |
+| **Execution** | Delegated via `delegate-skills`; Claude as Master, 8 worker tasks + 1 Master acceptance task |
+| **Final commit** | `f830aa1` (tree verified clean after T9) |
+
+**Acceptance criteria — 3/3 PASS, all Master-verified:**
+
+| AC | Evidence |
+|---|---|
+| Django starts successfully | Real `runserver` boot: process alive, **HTTP 200**, Django 6.0 welcome page served, **clean SIGTERM shutdown**, port released. With `DEBUG=False`, `/` correctly returns 404 (no routes registered yet — stock Django behaviour for an empty urlconf) |
+| Database connection works | Final settings: `ensure_connection()` OK · `PostgreSQL 16.13` · session `('postgres','momen',5432)` · ORM round-trip `40+2=42` · `vendor=postgresql driver=psycopg` · `is_usable=True` · closed cleanly |
+| All approved apps load correctly | All nine load; `LOCAL_APPS` order **exactly matches canonical**; `coaching` is one app (no `plans`/`checkins`); `audit` present; no extra apps; 16 registered (6 django + 1 drf + 9 local) |
+
+**Task ledger (all reviewed by Master before landing):**
+
+| Task | Worker | Commit | Result |
+|---|---|---|---|
+| T1 Django skeleton, split settings, env loading, requirements, `common/` | Codex | `89ea8e5` | ✅ PASS |
+| T2 Nine canonical app packages | OpenCode/GLM | `a2b8988` → merged `f4a0292` | ✅ PASS |
+| T3 Register nine apps in INSTALLED_APPS | Codex | `2bc78e3` | ✅ PASS |
+| T4 DRF (session auth, IsAuthenticated, pagination) | Codex | `56658c4` | ✅ PASS |
+| T5 Sessions, cookie security, CSRF | Codex | `ac106f1` | ✅ PASS |
+| T6 PostgreSQL from environment | OpenCode/GLM | `842440f` | ✅ PASS |
+| T7 Email backend + SMTP from environment | OpenCode/GLM | `8182cab` | ✅ PASS |
+| T8 Static/media handling | OpenCode/GLM | `fc76c76` | ✅ PASS |
+| T9 Final acceptance + regression | Claude (not delegated) | — | ✅ 3/3 AC PASS |
+
+**Whole-Story regression pass (T9) — all clean:** working tree clean, 1 worktree, 20 commits ·
+only `.env.example` tracked, `.env` ignored · no `UserSession`/`token_hash`/JWT/`authtoken`/
+`TokenAuthentication` · SessionAuthentication only + `IsAuthenticated` + `FitOpsPageNumberPagination`
+(20/`page_size`/100) · session db engine, HttpOnly session cookie, readable CSRF cookie, SameSite Lax,
+prod Secure flags not env-overridable · PostgreSQL engine · SMTP env-wired with **no provider
+selected** · static/media on local `FileSystemStorage`, no cloud/S3/boto3/django-storages ·
+**0 models, 0 migrations, 0 views/serializers/urls, 0 routes** · `common/` skeleton-only (all 0 bytes
+except the 200-byte approved paginator) · **`docs/` untouched by every commit, `MISSING_DECISIONS.md`
+unchanged with B24–B27 intact, `CLAUDE.md` unmodified** · every change confined to `backend/` +
+`PROGRESS.md`; `frontend/`, `infrastructure/`, `docker-compose.yml` untouched.
+
+**Master decisions surfaced and approved during this Story:** DRF `DEFAULT_PERMISSION_CLASSES =
+IsAuthenticated` (deny-by-default; public endpoints opt out per-view later) · stdlib-only env loading
+(no new dependency) · Django version chosen empirically, not guessed · T8 reassigned AGY → OpenCode/GLM.
+
+**Deliberate exclusions (other Stories own them):** authentication rate limiting (Epic 20) · logout
+endpoint (Epic 02) · SSL/HSTS/security headers (Story 21.2) · storage abstraction
+`backend/common/storage/` (later Story) · creating the `fitops` database and role (**Story 1.4**) ·
+custom DRF error envelope (later API/error-handling Story).
+
+#### Incident — `AGENTS.md` artifact
+
+An untracked `AGENTS.md` (43,527 bytes, a copy of `CLAUDE.md` with 4 "Claude"→"Codex" rewrites)
+appeared in the repository root **twice**: once during T1, and again at `22:40:56` — *after* every
+delegated task had completed and *after* T8 was committed at `22:38:21`, when `git status` was
+verifiably clean.
+
+- **Never committed. 0 commits in history, both times.**
+- Removed by Master on both occasions; deleted again during T9 cleanup.
+- `CLAUDE.md` itself verified unmodified in the working tree and in every Story 1.2 commit.
+- **Attribution: NOT determined, and deliberately not invented.** Observation only: the ChatGPT
+  desktop app's Codex processes launched 22:40:49–22:40:54, 2–7 seconds before the file appeared.
+  Correlation is recorded; causation is not asserted.
+- Classification: **non-blocker** — untracked, affects no acceptance criterion, zero effect on the
+  application.
+- **`.gitignore` was deliberately NOT updated** (user decision), so any future reappearance stays
+  visible as an unintended artifact rather than being silently hidden.
+
+#### Process finding — stale worker processes
+
+T9 investigated the four long-running `codex` / `opencode` / `agy` processes found in the repo.
+
+- **None belong to this delegation session.** All started 21:19–21:24, before the first dispatch at
+  21:48, and all are children of `/bin/zsh -il` inside **Antigravity IDE terminals** — the user's own
+  interactive CLI sessions.
+- **This delegation left zero stale processes**: every `relay.mjs` and its child had exited.
+- Therefore **nothing was terminated**. Killing them would have destroyed the user's own work and
+  violated "do not kill unrelated user/system processes".
+
+**Process lesson (binding for future Stories): worker processes must be confirmed terminated before
+Story-level acceptance is finalised.** A worker side-effect landed *after* review and *after* commit,
+so a clean tree at land-time is not a durable guarantee. Story acceptance must re-verify
+`git status -uall` after a settle window — as T9 did (20-second window, tree signature stable).
+
+**Final tree state at acceptance:** `git status -uall` empty · 0 untracked files · `AGENTS.md` absent ·
+`CLAUDE.md` sha `9616a81c67d0e0432d6bff3370f9454a6c87b090` unchanged · `.gitignore` unmodified ·
+`docs/` unmodified · HEAD `f830aa1` on `main`.
+
+---
 
 ### Story 1.1 — Monorepo Setup  (Epic 01 — Project Foundation)
 
@@ -116,300 +207,9 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**Story: 1.2 — Django Backend Setup** (Epic 01 — Project Foundation)
+**No Story currently in progress.**
 
-Started 2026-08-14. Executed via **delegated workers** (`delegate-skills`), Claude as Master.
-
-### Acceptance criteria (Blueprint §6)
-
-- Django starts successfully.
-- Database connection works.
-- All approved apps load correctly.
-
-### Task board
-
-```
-[x] T1  Django skeleton + split settings + env loading + requirements + common/   Codex     ✅ PASS (89ea8e5)
-[x] T2  Nine canonical Django app packages                                        OpenCode/GLM  ✅ PASS (a2b8988, merged f4a0292)
-[x] T3  Register nine apps in INSTALLED_APPS                                      Codex     ✅ PASS (2bc78e3)
-[x] T4  DRF config (session auth + pagination)                                    Codex     ✅ PASS (56658c4)
-[x] T5  Session framework + cookie/CSRF security                                  Codex     ✅ PASS (ac106f1)
-[x] T6  PostgreSQL DATABASES from env                                             OpenCode/GLM  ✅ PASS (842440f) — live connection verified
-[x] T7  Email backend + SMTP from env                                             OpenCode/GLM  ✅ PASS (8182cab)
-[x] T8  Static/media handling                                                     OpenCode/GLM  ✅ PASS (fc76c76)
-[ ] T9  Acceptance verification                                                   Claude    READY — awaiting explicit user approval
-```
-
-### Approved scope decisions for this Story
-
-- **DRF error envelope DEFERRED** — T4 configures DRF infrastructure only (session auth +
-  pagination). The custom `{"error":{...}}` handler lands in a later API/error-handling Story.
-  This is a Story-scope clarification; the API architecture document was **not** changed.
-- **`common/` skeleton created in T1** — empty packages with `__init__.py` only, zero business
-  logic. Real functionality stays owned by its Blueprint Story (e.g. tenant utilities in 3.4).
-
-### Isolation
-
-Settings-lock: only one worker may modify `backend/config/settings/base.py` at a time. Worktree
-isolation is managed by Master via `git worktree` and dispatched into with the relay's `--cd` flag —
-`delegate-skills` relays provide no worktree flag of their own.
-
-**Wave 1 live isolation (2026-08-14):**
-
-| Task | Worker | Working tree | Exclusive scope |
-|---|---|---|---|
-| T2 | AGY | worktree `t2-apps` at `…/scratchpad/wt-apps` | `backend/apps/**` |
-| T4 | Codex | main tree (branch `main`) | `backend/config/settings/base.py` + `backend/common/pagination/__init__.py` |
-
-The two scopes are file-disjoint, and each brief names the other worker's territory as
-"ANOTHER WORKER IS EDITING THIS CONCURRENTLY — do not touch". T4 holds the settings lock.
-
-**Landing order:** T4 lands on `main` first (it is already in the main tree), then branch `t2-apps`
-is merged. Merging requires a clean main tree, so the order is not interchangeable.
-
-**Standing rule discovered in T1:** workers have no network. Master performs all package installs
-and runs all gates that need them.
-
-### Current state
-
-**T1 COMPLETE and landed** — commit `89ea8e5`. All other tasks unstarted, awaiting approval.
-
-#### T1 review record (Master-executed, not worker self-report)
-
-| Gate | Result |
-|---|---|
-| `pip install -r backend/requirements.txt` | `Successfully installed Django-6.0.7 asgiref-3.12.1 djangorestframework-3.17.1 psycopg-3.3.4 sqlparse-0.6.0` |
-| `manage.py check` dev / prod | `System check identified no issues (0 silenced).` (both) |
-| prod without `DJANGO_SECRET_KEY` | `ImproperlyConfigured: DJANGO_SECRET_KEY must be set in production.` ✅ intended |
-| `.venv` ignored · forbidden config absent · no apps early · `common/` 0-byte | all ✅ |
-
-#### T4 review record (Master-executed) — commit `56658c4`
-
-| Gate | Result |
-|---|---|
-| `manage.py check` dev / prod | `System check identified no issues (0 silenced).` (both) |
-| `rest_framework` in INSTALLED_APPS | `True` |
-| `LOCAL_APPS` still empty (T3's territory) | `True` ✅ |
-| auth classes | `['SessionAuthentication']` — matches locked Phase 1 auth decision |
-| permission classes | `['IsAuthenticated']` — deny-by-default |
-| paginator | `FitOpsPageNumberPagination` · page_size 20 · param `page_size` · max 100 |
-| EXCEPTION_HANDLER | DRF default — custom envelope correctly **deferred** ✅ |
-| throttle classes | `[]` — correctly not configured (Epic 20) |
-| scope | only the 2 allowed files; DATABASE/SESSIONS/EMAIL/STATIC sections untouched ✅ |
-
-**Master decision — now USER-APPROVED (2026-08-14):** `DEFAULT_PERMISSION_CLASSES = IsAuthenticated`
-is the approved deny-by-default posture for this project. Public endpoints must explicitly opt out
-with `AllowAny` in their own future Stories when required.
-
-#### T2 review record (Master-executed) — commit `a2b8988`, merged `f4a0292`
-
-| Gate | Result |
-|---|---|
-| file inventory | 28 files under `backend/apps` (1 + 9×3) ✅ · 9 app dirs ✅ |
-| unexpected modules (models/views/admin/tests/urls/serializers) | none ✅ |
-| all `__init__.py` empty | 0 non-empty ✅ |
-| AppConfig dotted names | all nine resolve as `apps.<name>` with `BigAutoField` ✅ |
-| canonical list | accounts, applications, audit, billing, clients, coaching, commerce, notifications, workspaces — no extras, no omissions; `coaching` unsplit, `audit` present ✅ |
-| scope | nothing outside `backend/apps/` touched ✅ |
-| post-merge `manage.py check` dev/prod | `System check identified no issues (0 silenced).` (both) ✅ |
-| T4 config survived merge · LOCAL_APPS still empty | ✅ |
-
-Worktree `t2-apps` merged with `--no-ff`, then worktree and branch removed. Main tree clean.
-
-#### T2 dispatch failures — three attempts, no code involved in the first two
-
-| Attempt | Worker | Outcome |
-|---|---|---|
-| 1 | AGY | `failed`, exit 1, **0 files touched**. Headless mode hit a tool-permission prompt it cannot answer and auto-denied itself. Fix needs `--dangerously-skip-permissions` (security escalation) or an allow-rule in the user's global `settings.json` — neither taken unilaterally. |
-| 2 | OpenCode (no model) | Refused to start: "no model given — opencode has no safe default". 0 files touched. |
-| 3 | OpenCode `zai-coding-plan/glm-5.2` | ✅ Succeeded. Model chosen from the user's own configured providers; "OpenCode / **GLM**" is the approved worker name. |
-
-Worktree verified pristine before every re-dispatch, so no worker entered a dirty tree (Rule 12).
-
-**AGY — USER DECISION (2026-08-14):** do **not** use `--dangerously-skip-permissions`, do **not**
-modify `~/.claude/settings.json`. AGY stays temporarily unavailable for headless delegation.
-**T8 reassigned from AGY → OpenCode/GLM.** No rework required for the failed T2 dispatch attempts:
-the final result passed review and every worktree was verified pristine beforehand.
-
-#### T3 review record (Master-executed) — commit `2bc78e3`
-
-| Gate | Result |
-|---|---|
-| diff scope | exactly one file, `backend/config/settings/base.py`; only the `LOCAL_APPS` list changed ✅ |
-| `manage.py check` default / dev / prod | `System check identified no issues (0 silenced).` (all three) |
-| all nine apps load | ✅ every AppConfig resolves with `name == "apps.<label>"` |
-| registered app count | 16 = 6 django + 1 drf + 9 local ✅ |
-| migrations created | none ✅ (correct — no models exist yet) |
-| other sections untouched | `DATABASES = {}` intact; SESSION_COOKIE / EMAIL_ / MEDIA_ROOT / STATIC_ROOT all still absent ✅ |
-
-Canonical order preserved: accounts, workspaces, coaching, clients, applications, commerce, billing,
-notifications, audit. `coaching` unsplit, `audit` present.
-
-#### T5 review record (Master-executed) — commit `ac106f1`
-
-Security-critical task. All eight required verifications run by Master:
-
-| # | Check | Result |
-|---|---|---|
-| 1 | Exact diff scope | 3 files; `base.py` diff is **only** the SESSIONS & SECURITY section ✅ |
-| 2 | `manage.py check` default / dev / prod | `System check identified no issues (0 silenced).` ×3 |
-| 3 | Session auth is the only mechanism | `DRF auth = ['SessionAuthentication']` ✅ |
-| 4 | Cookie/security settings vs DB §5, §29 | see matrix below ✅ |
-| 5 | No custom session model | no `UserSession` class, no `token_hash` field, 0 models, 0 migrations ✅ |
-| 6 | No token/JWT | `jwt`, `authtoken`, `TokenAuthentication`, `simplejwt`, `oauth` all absent. Sole `Token` hit is `X-CSRFToken` in a comment ✅ |
-| 7 | No hardcoded secrets | none; only T1's pre-existing dev-only `django-insecure-` fallback ✅ |
-| 8 | No unrelated settings modified | REST_FRAMEWORK, DATABASE, EMAIL, STATIC banners all untouched ✅ |
-
-Cookie matrix as verified at runtime:
-
-| Setting | dev | prod |
-|---|---|---|
-| `SESSION_ENGINE` | `django.contrib.sessions.backends.db` | same |
-| `SESSION_COOKIE_HTTPONLY` | `True` (hardcoded) | `True` |
-| `SESSION_COOKIE_SECURE` | `False` | **`True` — hardcoded, not env-overridable** |
-| `CSRF_COOKIE_SECURE` | `False` | **`True` — hardcoded, not env-overridable** |
-| `SESSION_COOKIE_SAMESITE` / `CSRF_COOKIE_SAMESITE` | `Lax` | `Lax` |
-| `CSRF_COOKIE_HTTPONLY` | `False` (required — frontend reads csrftoken) | `False` |
-| `CSRF_TRUSTED_ORIGINS` | from env | from env |
-
-**Downgrade test:** prod was loaded with `SESSION_COOKIE_SECURE=False CSRF_COOKIE_SECURE=False` in
-the environment and still reported `True` for both. A misconfigured deployment cannot silently
-serve insecure cookies.
-
-**Master scope decisions (surfaced, not absorbed):** three items named in DB §5 were deliberately
-excluded from T5 as belonging to other Stories — authentication **rate limiting** (Epic 20), the
-**logout endpoint** (Epic 02; T5 is settings-only), and **SSL redirect / HSTS / security headers**
-(Nginx, Blueprint Story 21.2). `SESSION_COOKIE_AGE` was **not** set because no approved document
-specifies a session lifetime.
-
-#### T6 review record (Master-executed) — commit `842440f`
-
-**PostgreSQL availability confirmed BEFORE implementation** (client-vs-server distinction respected):
-
-| Probe | Result |
-|---|---|
-| TCP 5432 listener | `postgres` PID 3454 on `127.0.0.1:5432` and `[::1]:5432` ✅ |
-| Server processes | walwriter, background writer, autovacuum, logical replication launcher ✅ |
-| Unix socket | `/tmp/.s.PGSQL.5432` ✅ |
-| Service | `postgresql@16 started` (brew) ✅ |
-| Live query | `PostgreSQL 16.13 (Homebrew) on aarch64-apple-darwin25.2.0` ✅ |
-
-| Gate | Result |
-|---|---|
-| diff scope | one file; only the DATABASE section (14 changed lines) ✅ |
-| `check` default / dev / prod | `System check identified no issues (0 silenced).` ×3 |
-| engine | `django.db.backends.postgresql`, exactly the six keys, no extras ✅ |
-| PASSWORD default | empty string, no hardcoded credential ✅ |
-| **REAL connection (Master-run)** | `SERVER: PostgreSQL 16.13 …` · `CONNECTED AS: ('postgres','momen')` · round-trip `SELECT 1+1 → 2` · `vendor=postgresql driver=psycopg` ✅ |
-| models / migrations / `migrate` | 0 / 0 / not run ✅ |
-| SQLite fallback | absent ✅ |
-| new db libs (dj-database-url, psycopg2, django-environ) | absent ✅ |
-| infrastructure/Docker touched | none ✅ |
-| other sections intact | SESSION_ENGINE, CSRF_COOKIE_HTTPONLY, REST_FRAMEWORK, LOCAL_APPS all present ✅ |
-
-**Story 1.2 AC #2 "Database connection works" is now EMPIRICALLY VERIFIED by Master**, not accepted
-on a worker's report.
-
-**Scope boundary honoured:** the `fitops` database and `fitops` role do **not** exist on this
-machine — re-confirmed as absent after the task ran. Creating the development database is Blueprint
-**Story 1.4** ("Configure development database"). The live-connection proof therefore used an env
-override against the existing `postgres` database as role `momen`, creating nothing.
-
-**Carry-forward for Story 1.4:** it must create role `fitops` and database `fitops` (or the `.env`
-must be pointed at an existing database) before `migrate` can run. Existing databases: `couch`,
-`erp`, `postgres`. Existing roles: `momen`, `erp`.
-
-#### T7 review record (Master-executed) — commit `8182cab`
-
-| # | Check | Result |
-|---|---|---|
-| 1 | Exact diff scope | 2 files; `base.py` EMAIL section + one line in `dev.py` ✅ |
-| 2 | `check` default / dev / prod | `System check identified no issues (0 silenced).` ×3 |
-| 3 | Django SMTP backend | base = `django.core.mail.backends.smtp.EmailBackend` ✅ |
-| 4 | Env-driven host/port/user/password/TLS/from | injected `smtp.example.invalid:2525`, TLS False, custom from-address — all honoured end to end ✅ |
-| 5 | No hardcoded credentials | every value via `env()` with empty default; **no email address literal anywhere in backend/*.py** ✅ |
-| 6 | No provider-specific implementation | sendgrid, mailgun, postmark, amazonses, ses, gmail, resend, brevo, mailtrap, anymail, sparkpost, mandrill — all absent; `requirements.txt` unchanged (Django, DRF, psycopg only) ✅ |
-| 7 | No unrelated settings changed | `prod.py` untouched; DATABASES, SESSION_ENGINE, CSRF_COOKIE_HTTPONLY, REST_FRAMEWORK, LOCAL_APPS, STATIC_URL all intact ✅ |
-| 8 | No email business logic | `send_mail`, `EmailMessage`, `EmailMultiAlternatives`, `get_connection`, `shared_task` all absent; 0 files under `backend/apps` changed; no templates dir ✅ |
-
-Resolved during review: the two `mail.` grep hits are Django's own dotted backend paths
-(`django.core.mail.backends.{smtp,console}.EmailBackend`) — legitimate, not provider code.
-
-| Setting | dev | base/prod |
-|---|---|---|
-| `EMAIL_BACKEND` | console (built-in, no dependency) | `smtp.EmailBackend` |
-| `EMAIL_HOST` / `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | `''` | from env, `''` default |
-| `EMAIL_PORT` | `587` (int) | from env, int-coerced |
-| `EMAIL_USE_TLS` | `True` | from env, default True |
-| `DEFAULT_FROM_EMAIL` | `''` | from env, `''` default |
-
-**MISSING_DECISIONS.md unchanged — the SMTP provider remains deliberately unresolved.** T7 built
-only the plumbing so the decision can later be answered by environment variables alone. No delivery
-test was attempted, by design; the probe used the unresolvable TLD `.invalid` so nothing could
-reach a real host.
-
-#### T8 review record (Master-executed) — commit `fc76c76`
-
-Reassigned AGY → OpenCode/GLM by user decision (AGY unavailable headless).
-
-| # | Check | Result |
-|---|---|---|
-| 1 | Exact diff scope | 1 file; STATIC / MEDIA section only ✅ |
-| 2 | `check` default / dev / prod | `System check identified no issues (0 silenced).` ×3 |
-| 3 | STATIC_URL / STATIC_ROOT | `/static/` · `BASE_DIR/staticfiles` ✅ |
-| 4 | MEDIA_URL / MEDIA_ROOT | `/media/` · `BASE_DIR/mediafiles` ✅ |
-| 5 | Dev/prod separation | env override honoured in **both**: dev → `/srv/fitops/{static,media}`, prod → `/mnt/vol/{static,media}` ✅ |
-| 6 | No cloud/provider storage | boto3, django-storages, S3Boto3, minio, azure, gcloud, google.cloud, cloudflare, r2 all absent; **no `STORAGES` override** ✅ |
-| 7 | No new dependency | `requirements.txt` unchanged (Django, DRF, psycopg) ✅ |
-| 8 | No app/business logic | 0 files changed under `apps/` or `common/`; `common/storage/__init__.py` still 0 bytes; FileField, ImageField, Pillow, PIL, thumbnail, collectstatic, `static(` all absent ✅ |
-| 9 | No unrelated settings modified | urls.py / dev.py / prod.py untouched; DATABASES, SESSION_ENGINE, CSRF_COOKIE_HTTPONLY, EMAIL_BACKEND, REST_FRAMEWORK, LOCAL_APPS intact ✅ |
-| 10 | No secrets / hardcoded machine paths | no `/Users/` in any settings file; no `staticfiles/` or `mediafiles/` directory created ✅ |
-
-Resolved during review: the single `serve` grep hit is the word "ser**ver**" inside T7's SMTP
-comment — a substring false positive, not `django.views.static.serve`.
-
-**Design rationale recorded:** ROOTs are environment-driven because the filesystem location genuinely
-differs per deployment (Hetzner volume vs local dir); URLs are NOT, because they are path prefixes
-identical everywhere — making them configurable would be false configurability. No dev/prod
-overrides were added: the env-driven base values already serve both correctly.
-
-Phase 1 uses Django's default `FileSystemStorage`, matching the approved "Hetzner Volume / Local
-Storage" decision. The storage abstraction (`StorageService` / `LocalStorage` / `S3Storage`) remains
-unimplemented and is owned by a later Story.
-
-**Settings chain complete: T4 → T5 → T6 → T7 → T8 all landed. Settings lock permanently released
-for Story 1.2.**
-
-#### Worker environment limitation#### Worker environment limitation#### Worker environment limitation (important for future delegations)
-
-**Codex's sandbox had no outbound network access to PyPI.** It therefore could not install
-dependencies or run `manage.py check`, and pinned `requirements.txt` to current stable PyPI versions
-without local verification. Codex disclosed this honestly in its DEVIATIONS section rather than
-faking a green gate.
-
-Master resolved it: created `.venv`, installed the pinned versions — **they installed cleanly on
-Python 3.14.6** — and ran every gate. The pins are now empirically verified.
-
-**Carry forward:** any future worker task that needs package installation must either be run by
-Master, or the worker must be given a pre-populated environment. Do not assume workers have network.
-
-#### Scope violation found and corrected
-
-Codex created **`AGENTS.md`** — an unrequested file outside its allowed list, containing a copy of
-`CLAUDE.md` with content silently altered (e.g. "Stitch/Claude workflow" → "Stitch/Codex workflow").
-Master **deleted it before committing**. It was never committed and is not in history.
-
-Rationale for deletion rather than keeping: it duplicates the project's single index document and
-would drift from it, and altering `CLAUDE.md` content is outside any worker's authority. See
-*Known Issues / Risks* — the user may still choose to add a short pointer-style `AGENTS.md` later.
-
-### Last completed step### Last completed step
-
-"T8 reviewed and landed (fc76c76). All eight delegated tasks complete; settings chain finished."
-
-### Next step
-
-"T9 — final Story 1.2 acceptance verification (Claude, not delegated). REQUIRES EXPLICIT USER APPROVAL before starting."
+Story 1.2 is COMPLETE and accepted. Story 1.3 has **not** been started — it awaits approval.
 
 ---
 
@@ -418,30 +218,28 @@ would drift from it, and altering `CLAUDE.md` content is outside any worker's au
 | Field | Value |
 |---|---|
 | **Epic** | Epic 01 — Project Foundation |
-| **Story ID** | Story 1.2 |
-| **Story title** | Django Backend Setup |
+| **Story ID** | Story 1.3 |
+| **Story title** | Next.js Frontend Setup |
 
-**Why it is next:** Blueprint §6 lists 1.2 immediately after 1.1 within Epic 01, and §29 fixes
-Foundation as the first block. Story 1.1 (its only prerequisite) is complete.
+**Why it is next:** Blueprint §6 lists 1.3 immediately after 1.2 within Epic 01. Story 1.2, its only
+prerequisite, is COMPLETE.
 
-**Dependencies:** Story 1.1 — complete.
+**Dependencies:** Story 1.1 ✅ · Story 1.2 ✅.
 
-**Scope (Blueprint §6, quoted tasks):** initialize the Django project · configure Django REST
-Framework · create the approved apps · configure the settings structure · configure environment
-variables · configure PostgreSQL · configure static/media handling · configure Django's session
-framework · configure Django's email backend with SMTP settings sourced from environment variables.
+**Scope (Blueprint §6, quoted tasks):** initialize Next.js · configure TypeScript · configure
+Tailwind · configure shadcn/ui · configure React Hook Form · configure Zod · configure TanStack Query.
 
-**Approved apps for 1.2:** `accounts`, `workspaces`, `coaching`, `clients`, `applications`,
-`commerce`, `billing`, `notifications`, `audit`.
+**Acceptance criteria (Blueprint §6):** frontend builds successfully · development server works ·
+basic application shell exists.
 
 **Prerequisite checks before starting:**
 
-1. User approval to start Story 1.2 (do not start automatically).
-2. Python and PostgreSQL availability confirmed — **Unknown / not verified** in this environment.
-3. Re-read Blueprint §6 Story 1.2, Technology Stack (sessions, email), Database & Auth Architecture
-   §5 (Django session framework) and ERD §15–§23 (app boundaries).
-4. ~~Note the ERD §24 discrepancy~~ — resolved 2026-08-14. §24, §15 and Story 1.2 now agree on the
-   canonical nine apps.
+1. **User approval to start Story 1.3** — do not start automatically.
+2. Node v24.12.0 confirmed present ✅.
+3. `frontend/` currently holds only `.gitkeep` placeholders from Story 1.1 — scaffolding may need
+   them removed.
+4. Re-read Blueprint §6 Story 1.3, ERD §25 (frontend structure) and `docs/04-design/design.md`.
+5. Confirm no unresolved decision in `docs/MISSING_DECISIONS.md` applies (none currently do).
 
 ---
 

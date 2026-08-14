@@ -327,7 +327,7 @@ fitops/
 
 ---
 
-## Story 1.2 — Django Backend Setup
+## Story 1.2 — Django Backend Setup — ✅ COMPLETE (2026-08-14)
 
 ### Tasks
 
