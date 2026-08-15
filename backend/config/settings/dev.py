@@ -2,7 +2,6 @@
 
 from .base import *  # noqa: F403
 
-
 SECRET_KEY = env(  # noqa: F405
     "DJANGO_SECRET_KEY",
     "django-insecure-fitops-development-only-key",
