@@ -74,6 +74,18 @@ infrastructure/backups/*
 *.sql.gz
 
 # ---------------------------------------------------------------------------
+# Next.js framework-generated agent files
+# ---------------------------------------------------------------------------
+# Written and re-added by `next dev` via
+# node_modules/next/dist/server/lib/generate-agent-files.js
+# These are deterministic framework artifacts, NOT FitOps architecture files.
+# Narrow exception to the project's no-AGENTS.md policy: ONLY these two exact
+# paths are ignored. Any other AGENTS.md anywhere in the repository must remain
+# visible as an unintended artifact.
+/frontend/AGENTS.md
+/frontend/CLAUDE.md
+
+# ---------------------------------------------------------------------------
 # Editors / OS
 # ---------------------------------------------------------------------------
 .DS_Store
