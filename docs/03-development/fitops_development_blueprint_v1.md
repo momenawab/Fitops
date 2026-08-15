@@ -363,7 +363,7 @@ audit
 
 ---
 
-## Story 1.3 — Next.js Frontend Setup
+## Story 1.3 — Next.js Frontend Setup — ✅ COMPLETE (2026-08-15)
 
 ### Tasks
 

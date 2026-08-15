@@ -26,8 +26,8 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
-| **Current Story** | Story 1.3 — Next.js Frontend Setup — **IN PROGRESS** |
-| **Overall status** | Epic 01 in progress — 2 of 8 Stories complete; 1.3 started |
+| **Current Story** | Story 1.3 — Next.js Frontend Setup — **COMPLETE** |
+| **Overall status** | Epic 01 in progress — 3 of 8 Stories complete |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-14 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -60,6 +60,96 @@ Story at a time; do not start the next Story without approval.
 ---
 
 ## Completed
+
+### Story 1.3 — Next.js Frontend Setup  (Epic 01 — Project Foundation)
+
+| Field | Value |
+|---|---|
+| **Status** | ✅ COMPLETE |
+| **Date** | 2026-08-15 |
+| **Execution** | Option A: Master provisioned the network-bound scaffold; **one** bounded Codex task implemented; Master reviewed, sent one bounded rework, and accepted |
+| **Commit** | `49f40a5` |
+
+**Acceptance criteria — 3/3 PASS, verified from a clean `.next` state:**
+
+| AC | Evidence |
+|---|---|
+| Frontend builds successfully | `npm run build` EXIT=0 — compiled in 1548ms, routes `/` and `/_not-found` prerendered static |
+| Development server works | `npm run dev` → `▲ Next.js 16.3.1 (Turbopack)`, `✓ Ready in 157ms`, **HTTP 200** on `/`, page contains "FitOps" and "foundation is running", **zero** create-next-app demo content, clean shutdown, port released |
+| Basic application shell exists | Root layout with metadata + Providers; minimal placeholder page; no product UI |
+
+Also green: `npm run typecheck` EXIT=0 and `npm run lint` EXIT=0, both from a clean checkout.
+
+**Stack provisioned (Master, network-bound only) — all traced to the approved Technology Stack:**
+
+Next.js 16.3.1 · React 19.2.8 · TypeScript 5 (strict, `@/*`) · Tailwind CSS 4 · **shadcn/ui on Radix
+UI** (`style: radix-nova`, `iconLibrary: lucide`) · react-hook-form 7.85.0 · zod 4.4.3 ·
+@tanstack/react-query 5.101.4 · eslint 9. **Nothing outside the approved stack was installed.**
+
+**Implemented by Codex (one task):** package identity `fitops-frontend` · root layout + metadata ·
+`Providers` creating the QueryClient via `useState(() => …)` **per session, never at module scope**
+(prevents cache leaking across server requests) · `lib/query-client.ts` · `lib/validation.ts` with a
+single generic example schema · minimal placeholder page, demo content removed ·
+`frontend/.env.example` with only `NEXT_PUBLIC_API_URL` · `typecheck` script.
+
+**Rework — one round, bounded, same Codex session:** `npm run typecheck` failed from a clean
+checkout with `TS2304: Cannot find name 'LayoutProps'`. Root cause: `LayoutProps<"/">` is a Next.js 16
+**generated** global type in `.next/types/`, a git-ignored build artifact. Fixed by changing the
+script to `next typegen && tsc --noEmit`. `layout.tsx` was explicitly left unchanged — the
+`LayoutProps` usage is correct and idiomatic. **The defect originated in Master's brief**, which
+specified the naive script; recorded rather than blamed on the worker.
+
+**Scope held — deliberately NOT implemented:** the ERD §25 route tree (`(marketing)/`, `auth/`,
+`onboarding/`, `admin/`, `[workspaceSlug]/**` — owned by Epics 06–19) · product UI · marketing pages ·
+dashboard/portal screens · auth flows · API integration (0 fetch/axios/apiClient references) ·
+business logic · the design system (0 design.md tokens in `globals.css`) · shadcn components
+(`components/ui/` empty) · tests/lint baseline (Story 1.7) · Docker/CI (Stories 1.6/1.8).
+
+Verified: 0 changes outside `frontend/`; `backend/`, `docs/`, `CLAUDE.md`, `.gitignore` and the root
+`.env.example` all untouched; no secrets. `.gitkeep` removed only from `app/` and `lib/` (which now
+hold real files); `components/`, `features/`, `hooks/`, `types/` correctly keep theirs.
+
+#### Decision recorded — shadcn/ui primitive library
+
+**`shadcn/ui` → Radix UI** (user decision, 2026-08-14). Base UI and React Aria explicitly rejected.
+Recorded as an implementation decision; **architecture documents were not modified**, since the
+Technology Stack already says "shadcn/ui" and no approved document names a primitive library.
+
+**Open divergence for a later UI Story:** the `nova` preset ships **Geist**, while design.md §8
+mandates **Inter**. Theme tokens are out of Story 1.3 scope; design.md remains authoritative and was
+not modified.
+
+**Not installed, deliberately:** `@hookform/resolvers` — the canonical RHF↔Zod bridge, but not in the
+approved stack. The first Story that builds a real form will need it.
+
+#### Incident — Next.js generates `AGENTS.md` and `CLAUDE.md` on every `next dev`
+
+During the dev-server acceptance check, Next.js created **two** untracked files at `11:16:11`:
+
+| File | Size | Content |
+|---|---|---|
+| `frontend/AGENTS.md` | 678 B | Next.js agent rules block |
+| `frontend/CLAUDE.md` | 11 B | `@AGENTS.md` — a pointer |
+
+Both are written by `frontend/node_modules/next/dist/server/lib/generate-agent-files.js`. The file
+says so itself: *"This block is written and re-added by `next dev` … Removing it from a diff only
+re-creates the uncommitted change."*
+
+- **This is NOT the Story 1.2 artifact.** That one was 43,527 bytes and a copy of `CLAUDE.md` with
+  Claude→Codex rewrites. Contents verified different. The two incidents are unrelated phenomena and
+  must not be conflated.
+- Both deleted per the standing rule. Neither was ever committed (0 commits in history).
+- Root `CLAUDE.md` verified unmodified, sha `9616a81c67d0e0432d6bff3370f9454a6c87b090`.
+
+**⚠️ UNRESOLVED POLICY CONFLICT — needs a user decision.** `next dev` will regenerate both files on
+every run, so the frontend working tree cannot stay clean during normal development. This collides
+with two standing rules: "AGENTS.md must NOT exist in the repository" and "do NOT add AGENTS.md to
+`.gitignore`". Next.js's own recommendation is to commit them. **No policy chosen; nothing
+gitignored.** Options: (a) delete each time and accept a permanently dirty dev tree, (b) commit both
+as framework artifacts, (c) gitignore them, reversing the earlier decision, (d) disable the
+generator if Next.js supports it.
+
+---
 
 ### Story 1.2 — Django Backend Setup  (Epic 01 — Project Foundation)
 
@@ -207,150 +297,9 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**Story: 1.3 — Next.js Frontend Setup** (Epic 01 — Project Foundation)
+**No Story currently in progress.**
 
-Started 2026-08-14. **Option A execution model, user-approved:** Master performs only the
-network-dependent provisioning, then **one** bounded implementation task goes to Codex.
-
-### Acceptance criteria (Blueprint §6)
-
-- Frontend builds successfully.
-- Development server works.
-- Basic application shell exists.
-
-### Blocker resolved by Option A
-
-The Codex sandbox has **no outbound network** — verified empirically with a read-only probe
-(`curl: (6) Could not resolve host: registry.npmjs.org`, 0 files touched). Story 1.3 requires package
-downloads, so Master provisions and Codex implements. `--sandbox danger-full-access`,
-`--dangerously-skip-permissions` and AGY headless are all **prohibited** by user decision.
-
-### Task board
-
-```
-[x] P   Master provisioning (network only)      Claude   ✅ COMPLETE
-[~] I   Story 1.3 implementation (ONE task)     Codex    DISPATCHED
-[ ] R   Master review + final acceptance        Claude   blocked on I
-```
-
-### Master provisioning scope — verified against the approved stack
-
-| Command | Justification |
-|---|---|
-| `create-next-app --ts --tailwind --eslint --app --no-src-dir --import-alias "@/*" --use-npm` | Technology Stack "Next.js + TypeScript", "Tailwind CSS"; App Router required by ERD §25 route groups `(marketing)` / `[workspaceSlug]`; no `src/` because ERD §25 shows `frontend/app/` |
-| `npm install react-hook-form zod @tanstack/react-query` | Technology Stack "Forms: React Hook Form", "Zod", "Server State: TanStack Query" |
-| `npx shadcn@latest init` | Technology Stack "shadcn/ui"; brings lucide-react, mandated by design.md §25 |
-
-Scaffolded into a temp directory first, because `create-next-app` refuses a non-empty target and
-`frontend/` holds Story 1.1 `.gitkeep` placeholders. **Master deletes nothing** — placeholders merge
-and their cleanup belongs to Codex.
-
-**Nothing else installed:** no Prettier, no test libraries, no state managers, no HTTP clients, no
-component kits.
-
-**Judgment surfaced:** `--eslint` included because it is part of the official Next.js scaffold, even
-though Blueprint Story 1.7 owns the lint/format/typecheck *baseline*. Flagged to the user.
-
-### Provisioning status — PARTIAL, blocked on a decision
-
-| Step | Status |
-|---|---|
-| `create-next-app` scaffold | ✅ Next.js 16.3.1, React 19.2.8, Tailwind 4, TypeScript 5, ESLint 9 |
-| Scaffold moved into `frontend/` | ✅ 6 files deliberately excluded (`.git`, `.next`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`) |
-| `react-hook-form` + `zod` + `@tanstack/react-query` | ✅ 7.85.0 / 4.4.3 / 5.101.4 |
-| `shadcn init` | ✅ `style: radix-nova`, `radix-ui` installed, `iconLibrary: lucide`, no Base UI |
-
-**Note:** `create-next-app` now generates its own `AGENTS.md` and `CLAUDE.md` in every project. Both
-were excluded. This is very likely the origin of the Story 1.2 `AGENTS.md` artifact — a scaffolder
-convention, not a rogue worker. Recorded as evidence; no retroactive attribution asserted.
-
-### RESOLVED — shadcn/ui primitive library: **Radix UI** (user decision, 2026-08-14)
-
-**Approved: `shadcn/ui` → Radix UI primitives.** Base UI and React Aria are explicitly rejected.
-
-This is the foundation under every FitOps component from here on. It is recorded here as an
-implementation decision; the architecture documents were **not** modified, since the Technology Stack
-already names "shadcn/ui" and no approved document specifies a primitive library.
-
-Initialized with `npx shadcn@latest init -b radix -y --no-monorepo`.
-
-#### Two failed init attempts before this (recorded for accuracy)
-
-1. `--base-color neutral` → `error: unknown option` (flag removed from the CLI). Nothing created.
-2. `-y --no-monorepo` → hung on an interactive "Select a component library" prompt that `-y` does
-   not skip. Nothing created.
-
-**Both returned shell exit code 0 because the command was piped through `tail`** — the wrapper
-succeeded while the tool did nothing. Caught only by inspecting the filesystem
-(`components.json` absent, no shadcn dependencies installed).
-
-**Process lesson: never read a piped command's exit code as the tool's exit code.** Subsequent runs
-use `set -o pipefail` and an explicit exit-code echo, and every provisioning step is confirmed
-against the filesystem rather than against a status line.
-
-### Provisioned stack (final, verified on the filesystem)
-
-| Package | Version | Approved by |
-|---|---|---|
-| next / react / react-dom | 16.3.1 / 19.2.8 / 19.2.8 | Technology Stack "Next.js" |
-| typescript | 5 | "Next.js + TypeScript" |
-| tailwindcss + @tailwindcss/postcss | 4 | "Tailwind CSS" |
-| shadcn/ui → **radix-ui** | `style: radix-nova`, `iconLibrary: lucide` | "shadcn/ui"; Radix per user decision; Lucide per design.md §25 |
-| clsx / tailwind-merge / class-variance-authority / lucide-react | 2.1.1 / 3.6.0 / 0.7.1 / 1.31.0 | shadcn/ui transitive |
-| react-hook-form | 7.85.0 | "Forms: React Hook Form" |
-| zod | 4.4.3 | "Zod" |
-| @tanstack/react-query | 5.101.4 | "Server State: TanStack Query" |
-| eslint / eslint-config-next | 9 / 16.3.1 | Next.js official scaffold |
-
-**Not installed, deliberately:** `@hookform/resolvers` (not in the approved stack — the first Story
-that builds a real form will need it), react-query devtools, Prettier, any test library.
-
-**Divergence to resolve in a later UI Story:** the `nova` preset ships **Geist** as its font, while
-design.md §8 mandates **Inter**. Theme tokens are explicitly out of Story 1.3 scope; design.md
-remains authoritative and was NOT modified.
-
-### shadcn init took four attempts — all recorded
-
-| # | Command | Result |
-|---|---|---|
-| 1 | `--base-color neutral` | `error: unknown option` — flag removed from CLI. Nothing created. |
-| 2 | `-y --no-monorepo` | Hung on interactive "Select a component library" prompt. Nothing created. |
-| 3 | `-b radix -p radix-nova` | `Invalid preset: radix-nova. Available: nova, vega, maia, lyra, mira, luma, sera, rhea`. Nothing created. |
-| 4 | `-b radix -p nova` | ✅ Success — `components.json`, `lib/utils.ts`, fonts + `globals.css` updated |
-
-Attempts 1–2 reported shell exit code **0** while the tool did nothing, because the command was
-piped through `tail`. **Process lesson applied from attempt 3 onward: `set -o pipefail` plus an
-explicit `echo $?`, and every provisioning step confirmed against the filesystem rather than a
-status line.** Attempt 3's real failure (`SHADCN_EXIT=1`) was caught only because of that change.
-
-### Codex implementation task — dispatched
-
-ONE bounded task covering: package identity, app shell + root layout, TanStack Query provider
-(per-session client, not module scope), Zod example schema proving configuration, TypeScript strict
-+ `@/*` alias + `typecheck` script, `frontend/.env.example`, and `.gitkeep` cleanup only where
-directories now hold real files.
-
-**Explicitly fenced out of the brief:** the ERD §25 route tree, all product UI, auth flows, API
-integration, business logic, design-system implementation, shadcn component additions, dependency
-changes, test/lint/CI setup, backend and docs changes, and `AGENTS.md`.
-
-**Scope call recorded:** ERD §25's route tree (`(marketing)/`, `auth/`, `onboarding/`, `admin/`,
-`[workspaceSlug]/**`) is **not** created in this Story. Story 1.3's criterion is "Basic application
-shell exists"; those 15 route areas are owned by Epics 06–19.
-
-### Last completed step
-
-"Provisioning complete (Next.js + Tailwind + TS + shadcn/Radix + RHF + Zod + TanStack Query); single Codex implementation task dispatched."
-
-### Next step
-
-"Independently review Codex's final diff, run all Story 1.3 gates (typecheck, lint, build, dev-server boot), then final Story acceptance."
-
----
-
-## Next step
-
-"Await user decision on the network-bound scaffolding step, then dispatch the single Story 1.3 implementation brief."
+Story 1.3 is COMPLETE and accepted. Story 1.4 has **not** been started.
 
 ---
 
@@ -359,28 +308,30 @@ shell exists"; those 15 route areas are owned by Epics 06–19.
 | Field | Value |
 |---|---|
 | **Epic** | Epic 01 — Project Foundation |
-| **Story ID** | Story 1.3 |
-| **Story title** | Next.js Frontend Setup |
+| **Story ID** | Story 1.4 |
+| **Story title** | PostgreSQL Setup |
 
-**Why it is next:** Blueprint §6 lists 1.3 immediately after 1.2 within Epic 01. Story 1.2, its only
-prerequisite, is COMPLETE.
+**Why it is next:** Blueprint §6 lists 1.4 immediately after 1.3. Stories 1.1, 1.2 and 1.3 are all
+COMPLETE.
 
-**Dependencies:** Story 1.1 ✅ · Story 1.2 ✅.
+**Scope (Blueprint §6, quoted tasks):** create PostgreSQL service · configure development database ·
+configure test database strategy · configure migrations.
 
-**Scope (Blueprint §6, quoted tasks):** initialize Next.js · configure TypeScript · configure
-Tailwind · configure shadcn/ui · configure React Hook Form · configure Zod · configure TanStack Query.
+**Acceptance criteria (Blueprint §6):** Django migrations execute · database connection is stable.
 
-**Acceptance criteria (Blueprint §6):** frontend builds successfully · development server works ·
-basic application shell exists.
+**Carried forward from Story 1.2 (T6) — this is Story 1.4's core work:** the `fitops` database and
+`fitops` role **do not exist** on this machine. Story 1.2 proved Django↔PostgreSQL connectivity by
+pointing at the existing `postgres` database as role `momen`, deliberately creating nothing.
+Existing databases: `couch`, `erp`, `postgres`. Existing roles: `momen`, `erp`. PostgreSQL 16.13 is
+running via brew (`postgresql@16`).
 
 **Prerequisite checks before starting:**
 
-1. **User approval to start Story 1.3** — do not start automatically.
-2. Node v24.12.0 confirmed present ✅.
-3. `frontend/` currently holds only `.gitkeep` placeholders from Story 1.1 — scaffolding may need
-   them removed.
-4. Re-read Blueprint §6 Story 1.3, ERD §25 (frontend structure) and `docs/04-design/design.md`.
-5. Confirm no unresolved decision in `docs/MISSING_DECISIONS.md` applies (none currently do).
+1. **User approval to start Story 1.4** — do not start automatically.
+2. Resolve the `AGENTS.md`/`CLAUDE.md` generation policy conflict above.
+3. Confirm whether Master may create the database and role (a mutation of the user's PostgreSQL
+   instance) or whether the user will provision it.
+4. Confirm no unresolved item in `docs/MISSING_DECISIONS.md` applies (none currently do).
 
 ---
 
