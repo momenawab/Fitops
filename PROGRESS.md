@@ -186,6 +186,52 @@ instead of improvising.
 
 ---
 
+#### Corrective defect — `package-lock.json` was not cross-platform (fixed `5d5441a`)
+
+**Discovered:** during **Story 1.6** Docker Compose build verification, not during Story 1.3's own
+acceptance. The Story 1.3 gates (`typecheck`, `lint`, `build`, dev-server boot) all ran on the host
+and passed legitimately — the defect only surfaces when dependencies are resolved on Linux.
+
+**Why it belongs to Story 1.3:** `frontend/package-lock.json` is a Story 1.3 artifact. It was
+generated on **Darwin arm64** and omitted the optional-dependency entries npm resolves on
+**Linux aarch64**. Story 1.6 merely exposed it. Fixing it inside Story 1.6 would have widened that
+Story's scope, so it was corrected separately.
+
+**Symptom (Story 1.6 frontend image build, exit 1):**
+
+```
+npm error code EUSAGE
+`npm ci` can only install packages when your package.json and package-lock.json are in sync.
+Missing: @emnapi/runtime@1.11.3 from lock file
+Missing: @emnapi/core@1.11.3 from lock file
+```
+
+**Correction:** `cd frontend && npm install --package-lock-only` — user-approved, run by Master.
+
+**Diff audit before committing:**
+
+| Check | Result |
+|---|---|
+| `package.json` | byte-identical, 0 changes ✅ |
+| Packages added | 4, all nested under `@tailwindcss/oxide-wasm32-wasi` (Linux WASM fallback) |
+| Packages removed | 0 |
+| **Version changes** | **0** |
+| Root `dependencies` / `devDependencies` | identical ✅ |
+| `lockfileVersion` | 3 → 3, unchanged |
+
+**Verification:** `npm ci` was run against the regenerated lockfile inside a throwaway
+`node:24-slim` **Linux** container (files mounted read-only, copied to `/tmp` so the repo could not
+be mutated) → **`NPM_CI_EXIT=0`**, where it previously failed with EUSAGE. The fix was proven before
+being committed, not assumed — the lockfile supplies `@emnapi/*` at 1.10.0 while npm's error named
+1.11.3, so presence alone would not have been sufficient evidence.
+
+**Deliberately NOT done:** the Dockerfile keeps `npm ci`. Relaxing it to `npm install` would have
+masked the real defect and given up reproducible builds. `package.json` untouched; no dependency
+versions changed; no backend or frontend source modified.
+
+**Lesson:** host-generated lockfiles are not automatically portable. Any Story whose acceptance runs
+only on the host can hide a platform-resolution defect that surfaces later in containerised builds.
+
 ### Story 1.3 — Next.js Frontend Setup  (Epic 01 — Project Foundation)
 
 | Field | Value |
