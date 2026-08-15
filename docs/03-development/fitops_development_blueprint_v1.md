@@ -383,7 +383,7 @@ audit
 
 ---
 
-## Story 1.4 — PostgreSQL Setup
+## Story 1.4 — PostgreSQL Setup — ✅ COMPLETE (2026-08-15)
 
 ### Tasks
 

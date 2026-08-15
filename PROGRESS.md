@@ -26,8 +26,8 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
-| **Current Story** | Story 1.3 — Next.js Frontend Setup — **COMPLETE** |
-| **Overall status** | Epic 01 in progress — 3 of 8 Stories complete |
+| **Current Story** | Story 1.4 — PostgreSQL Setup — **COMPLETE** |
+| **Overall status** | Epic 01 in progress — 4 of 8 Stories complete |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-14 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -60,6 +60,75 @@ Story at a time; do not start the next Story without approval.
 ---
 
 ## Completed
+
+### Story 1.4 — PostgreSQL Setup  (Epic 01 — Project Foundation)
+
+| Field | Value |
+|---|---|
+| **Status** | ✅ COMPLETE |
+| **Date** | 2026-08-15 |
+| **Execution** | Master provisioned role+database (user-authorised); single Codex task dispatched, hit its connectivity gate and correctly stopped; Master performed verification |
+| **Repository changes** | **NONE** — a legitimate outcome; the DATABASES config from Story 1.2 already pointed at `fitops`/`fitops` |
+
+**Acceptance criteria — 2/2 PASS, Master-verified:**
+
+| AC | Evidence |
+|---|---|
+| Django migrations execute | `migrate` applied 18 migrations across `contenttypes`, `auth`, `admin`, `sessions` — all `OK`. `migrate --check` EXIT=0, no pending migrations |
+| Database connection is stable | Connected as `('fitops','fitops')` using the FitOps config with **no `.env`** (defaults apply); **5/5** consecutive connect→query→close cycles OK |
+
+**Provisioning performed by Master (explicitly user-authorised):**
+
+| Object | Result |
+|---|---|
+| Role `fitops` | `LOGIN`, `CREATEDB`, **NOT superuser** (least privilege) |
+| Database `fitops` | owner `fitops`, UTF8 |
+
+**Pre-flight before any mutation:** role absent (count 0), database absent (count 0) — both verified
+read-only first. Creation used guarded, idempotent SQL.
+
+**Safety verified after the change:** `couch` (owner momen), `erp` (owner erp), `postgres`
+(owner momen) all intact with original owners; roles `erp` and `momen` untouched; no `DROP` of any
+pre-existing object; `pg_hba.conf` and `postgresql.conf` unmodified.
+
+**No credential invented or committed.** `pg_hba.conf` uses `trust` for local/127.0.0.1 (standard
+Homebrew dev configuration), so Django's existing empty-string password default works. Nothing
+secret was written to any file, and no `.env` was created.
+
+**Schema created (10 tables in `public`):** `auth_group`, `auth_group_permissions`,
+`auth_permission`, `auth_user`, `auth_user_groups`, `auth_user_user_permissions`,
+`django_admin_log`, `django_content_type`, `django_migrations`, `django_session`.
+
+#### Test database strategy — verified by capability proof, and why
+
+`manage.py test` reported **"Skipping setup of unused database(s): default"** because zero tests
+exist yet, so that run proved *nothing* about test-database creation. Verified directly instead:
+role `fitops` created `test_fitops_probe` (owner `fitops`) and dropped it successfully — exactly the
+`CREATEDB` capability Django's test runner requires for `test_fitops`.
+
+Strategy: Django's default naming (`test_` + NAME). **No `TEST` block was added** — the default is
+the strategy, and adding one speculatively would be invention. The full path will be exercised when
+Story 1.7 introduces the first tests.
+
+#### Delegation outcome — worker blocked, gate worked as designed
+
+The Codex sandbox **cannot open sockets at all, including localhost**:
+
+```
+psycopg.OperationalError: connection to server at "127.0.0.1", port 5432 failed:
+Operation not permitted
+```
+
+The brief's Step 0 connectivity gate caught this: the worker **stopped immediately, changed nothing,
+and reported the exact error** rather than switching to SQLite or altering settings. Master then took
+over verification, as the brief specified.
+
+**Carry-forward, generalising the Story 1.2/1.3 finding:** worker sandboxes have no network **and no
+local socket access**. Any task requiring a live database, package install, or dev-server boot must
+be verified by Master. Briefs should include an explicit early gate so workers fail fast and cleanly
+instead of improvising.
+
+---
 
 ### Story 1.3 — Next.js Frontend Setup  (Epic 01 — Project Foundation)
 
@@ -299,7 +368,7 @@ Documentation work completed to date (not implementation — recorded for contex
 
 **No Story currently in progress.**
 
-Story 1.3 is COMPLETE and accepted. Story 1.4 has **not** been started.
+Story 1.4 is COMPLETE and accepted. Story 1.5 has **not** been started.
 
 ---
 
@@ -308,30 +377,27 @@ Story 1.3 is COMPLETE and accepted. Story 1.4 has **not** been started.
 | Field | Value |
 |---|---|
 | **Epic** | Epic 01 — Project Foundation |
-| **Story ID** | Story 1.4 |
-| **Story title** | PostgreSQL Setup |
+| **Story ID** | Story 1.5 |
+| **Story title** | Redis + Celery |
 
-**Why it is next:** Blueprint §6 lists 1.4 immediately after 1.3. Stories 1.1, 1.2 and 1.3 are all
-COMPLETE.
+**Why it is next:** Blueprint §6 lists 1.5 immediately after 1.4. Stories 1.1–1.4 are COMPLETE.
 
-**Scope (Blueprint §6, quoted tasks):** create PostgreSQL service · configure development database ·
-configure test database strategy · configure migrations.
+**Scope (Blueprint §6, quoted tasks):** add Redis · configure Celery · create worker configuration ·
+create basic health task.
 
-**Acceptance criteria (Blueprint §6):** Django migrations execute · database connection is stable.
+**Acceptance criteria (Blueprint §6):** Celery worker starts · Celery can communicate with Redis.
 
-**Carried forward from Story 1.2 (T6) — this is Story 1.4's core work:** the `fitops` database and
-`fitops` role **do not exist** on this machine. Story 1.2 proved Django↔PostgreSQL connectivity by
-pointing at the existing `postgres` database as role `momen`, deliberately creating nothing.
-Existing databases: `couch`, `erp`, `postgres`. Existing roles: `momen`, `erp`. PostgreSQL 16.13 is
-running via brew (`postgresql@16`).
+**Known constraints before starting:**
 
-**Prerequisite checks before starting:**
-
-1. **User approval to start Story 1.4** — do not start automatically.
-2. Resolve the `AGENTS.md`/`CLAUDE.md` generation policy conflict above.
-3. Confirm whether Master may create the database and role (a mutation of the user's PostgreSQL
-   instance) or whether the user will provision it.
-4. Confirm no unresolved item in `docs/MISSING_DECISIONS.md` applies (none currently do).
+1. **User approval required** — do not start automatically.
+2. **Redis is not known to be installed or running** — unverified. Story 1.5 needs a live Redis, and
+   `docker` is NOT installed (Docker Compose arrives in Story 1.6), so Redis must come from
+   somewhere else (e.g. Homebrew) or the Story is blocked. Verify before dispatching.
+3. `celery` and `redis` are **not** in `backend/requirements.txt` — installing them is network work,
+   so **Master must provision**, as in Stories 1.3 and 1.4.
+4. Worker sandboxes have no network and no socket access; any Redis/Celery runtime verification must
+   be done by Master.
+5. Confirm no unresolved item in `docs/MISSING_DECISIONS.md` applies (none currently do).
 
 ---
 
