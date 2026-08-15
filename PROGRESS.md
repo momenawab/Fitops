@@ -17,6 +17,10 @@
 > **Accuracy rule:** never record a completed Story, test result, file change, decision, date, or
 > bug fix that did not actually happen. If something is unknown, write
 > **"Unknown / not verified."**
+>
+> **Taking over the Master role?** Also read **`docs/MASTER_HANDOFF.md`** — the operational handoff
+> covering the delegation model, worker permissions, verification rules and environment. It has
+> **no architecture authority**; this file and the approved documents outrank it.
 
 ---
 
@@ -26,8 +30,8 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
-| **Current Story** | Story 1.7 — Testing and Quality Baseline — **IN PROGRESS** |
-| **Overall status** | Epic 01 in progress — 6 of 8 Stories complete |
+| **Current Story** | Story 1.7 — Testing and Quality Baseline — **COMPLETE and accepted** |
+| **Overall status** | Epic 01 in progress — **7 of 8 Stories complete**; Story 1.8 NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-15 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -60,6 +64,10 @@ Story at a time; do not start the next Story without approval.
 ---
 
 ## Completed
+
+> **Story 1.7 — Testing and Quality Baseline** is also COMPLETE and accepted. Because of its
+> length it is recorded in its own **"Completed — Story 1.7"** section further down this file,
+> below *In Progress*. Stories 1.1–1.7 are all complete; Epic 01 has 8 Stories.
 
 ### Story 1.6 — Docker Compose  (Epic 01 — Project Foundation)
 
@@ -579,11 +587,22 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
+**No Story currently in progress.**
+
+Story 1.7 is COMPLETE and accepted. Story 1.8 has **not** been started.
+
+---
+
+## Completed — Story 1.7
+
+> Recorded here rather than in the main **Completed** section above only because of its length and
+> the order in which it was written. It is a fully completed and accepted Story with the same
+> status as Stories 1.1–1.6.
+
 ### Story 1.7 — Testing and Quality Baseline  (Epic 01 — Project Foundation)
 
-**Status:** Implementation COMPLETE and independently verified by Master on 2026-08-15.
-**AWAITING USER ACCEPTANCE** — not yet moved to the Completed section, per the project rule that a
-Story is accepted by the user, not self-declared.
+**Status:** ✅ **COMPLETE** — implementation finished and independently verified by Master on
+2026-08-15, and **explicitly accepted by the user on 2026-08-15**.
 
 **Acceptance criteria (Blueprint §6):** all baseline checks can run locally.
 
@@ -806,7 +825,10 @@ verified, pending user acceptance.
 
 ## Decisions Made During Implementation
 
-**None.** No implementation has occurred, so no implementation-level decisions exist.
+Implementation-level decisions taken during Stories 1.1–1.7 are recorded **inline in each Story's
+own section above**, next to the evidence that justified them (for example: the ERD §24 app-list
+correction in Story 1.1, the `libpq5` fix in Story 1.6, and the approved test/lint/format tool set
+in Story 1.7). They are not duplicated here, so that a single Story's record stays self-contained.
 
 Architecture and product decisions are **not** recorded here — they live in the Development
 Blueprint decision log (§2A: v1.1 decisions 1–18; §2B: v1.2 billing decisions 19–37 and v1.2.1
@@ -838,8 +860,10 @@ Currently registered: **B24** (archive retention duration), **B25** (archive res
 **B26** (long-expired multi-period reactivation), **B27** (terminal `CANCELLED` cleanup lifecycle),
 and the deliberately unselected **SMTP provider** (deployment configuration; blocks no Story).
 
-**Impact on implementation so far:** none — implementation has not started. B24–B27 are expected to
-become relevant only in Epic 22 (Stories 22.6, 22.9, 22.10b, 22.10c).
+**Impact on implementation so far:** none. Stories 1.1–1.7 (Epic 01 foundation work) touched no
+billing or email behaviour, so no registered decision was reached. B24–B27 are expected to become
+relevant only in Epic 22 (Stories 22.6, 22.9, 22.10b, 22.10c); the SMTP provider becomes relevant
+at deployment and blocks no Story.
 
 When an unresolved decision affects implementation, record it here as:
 
@@ -850,8 +874,13 @@ When an unresolved decision affects implementation, record it here as:
 
 ## Known Issues / Risks
 
-**No implementation issues.** Nothing has been built, so there are no bugs, integration failures, or
-deferred work items.
+**Open carry-ins for Story 1.8** (real, currently unresolved):
+
+| Description | Impact | Related Story | Status | Suggested next action |
+|---|---|---|---|---|
+| **`next-env.d.ts` churn between `next dev` and `next typegen`** | `next dev` writes `import "./.next/dev/types/..."`; the standalone `next typegen` (which `npm run typecheck` runs) rewrites it to `./.next/types/...`. Whichever ran last dirties the working tree. **Not functionally broken** — `typecheck` runs `typegen` first and self-corrects, so the gate passes either way. The committed version is the `typegen` variant | 1.3 → **carry-in to 1.8** | **OPEN — unresolved by decision** | If the Story 1.8 workflow adds a "working tree must be clean" assertion, this will trip it. Decide in 1.8 whether to ignore the path, normalise it, or drop the assertion. **Do not resolve it silently** |
+| **`manage.py test` exits 0 while collecting zero tests** | Run from the repository root, Django's runner discovers nothing (`backend/` is not an importable package) and still returns exit code 0 — a false green. Verified directly | 1.7 → **carry-in to 1.8** | **Mitigated locally, open for CI** | `infrastructure/scripts/checks.sh` already runs the gate from `backend/` and fails on "no tests collected". Story 1.8 should invoke that script rather than calling Django directly; if it ever calls Django directly it MUST reproduce the guard |
+| **Local `main` is 14 commits ahead of `origin/main`** | Nothing from Epic 01 has been pushed to `https://github.com/momenawab/Fitops.git`. Story 1.8 wires GitHub Actions, whose DoD is "pull requests automatically run required checks" — that cannot be observed until commits reach the remote | 1.8 | **Open — user's call** | Master must **not** push without explicit instruction. Confirm with the user when Story 1.8 begins |
 
 Documented risks carried from the architecture (context for a future agent, not defects):
 
@@ -874,9 +903,27 @@ Use this format for real issues once implementation starts:
 
 ## Tests & Verification
 
-**No automated test framework exists yet** — it is established in Blueprint Story 1.7. Story 1.1
-introduced no application code to unit-test. Verification was structural and was **actually
-executed** against this repository on 2026-08-14.
+**An automated test baseline now exists** — established in Story 1.7 (2026-08-15).
+
+**Run every baseline gate with one command:**
+
+```
+./infrastructure/scripts/checks.sh
+```
+
+It runs all seven gates and exits **non-zero** if any fails: backend `ruff check`,
+`ruff format --check` and the Django test suite (from `backend/`, failing if zero tests are
+collected); frontend `lint`, `typecheck`, `vitest` and `format:check`. Last full run on `main`:
+**exit 0, all 7 gates PASS** (3 backend tests, 2 frontend tests).
+
+Coverage is deliberately **baseline only**. Blueprint §30's Unit / API / **tenant-isolation** /
+E2E suites belong to the Stories and Epics that introduce that behaviour — Story 1.7 added no
+business-logic tests because no business logic exists yet.
+
+---
+
+The structural verification below is the **Story 1.1** record, executed on 2026-08-14, and is kept
+for history.
 
 | Check | Command / method | Result |
 |---|---|---|

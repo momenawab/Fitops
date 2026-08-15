@@ -27,6 +27,7 @@ All documentation lives under `docs/`.
 | 7 | Design System v1.2.1 | `docs/04-design/design.md` | Visual direction, tokens, components, billing UI, Stitch/Claude workflow |
 | — | **Missing Decisions Registry** | `docs/MISSING_DECISIONS.md` | Decisions deliberately left unresolved — **stop and ask, never guess** |
 | — | **Implementation Progress** | `PROGRESS.md` | Mandatory implementation handoff: what is done, in progress, and next |
+| — | **Master Agent Handoff** | `docs/MASTER_HANDOFF.md` | Operational handoff for an agent taking over the **Master** role (delegation model, worker permissions, verification rules, environment). **No architecture authority** — informational only |
 
 **Blueprint §38 status:** MVP Scope, Technology Stack, Database/Auth Architecture, ERD/Repository Architecture, API Specification, and Development Blueprint are all **LOCKED**. Design System §38: Visual Direction **LOCKED**.
 
