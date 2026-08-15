@@ -219,11 +219,61 @@ Missing: @emnapi/core@1.11.3 from lock file
 | Root `dependencies` / `devDependencies` | identical ✅ |
 | `lockfileVersion` | 3 → 3, unchanged |
 
-**Verification:** `npm ci` was run against the regenerated lockfile inside a throwaway
-`node:24-slim` **Linux** container (files mounted read-only, copied to `/tmp` so the repo could not
-be mutated) → **`NPM_CI_EXIT=0`**, where it previously failed with EUSAGE. The fix was proven before
-being committed, not assumed — the lockfile supplies `@emnapi/*` at 1.10.0 while npm's error named
-1.11.3, so presence alone would not have been sufficient evidence.
+#### ⚠️ RETRACTION — the first verification was INVALID and `5d5441a` was ineffective
+
+**The claim that `5d5441a` was "proven before being committed" was FALSE.** Retracted in full.
+
+The verification command was:
+
+```
+npm ci --silent 2>&1 | tail -5; echo NPM_CI_EXIT=$?
+```
+
+`$?` captured **`tail`'s** exit code, not npm's. `tail` succeeded, so it printed `NPM_CI_EXIT=0`
+while npm was failing underneath. Re-run correctly, the same lockfile gives **`REAL_NPM_CI_EXIT=1`**.
+
+This is the exact pipe-masking trap already recorded as a standing lesson during Story 1.3's shadcn
+failures — *"never read a piped command's exit code as the tool's exit code"* — and it was repeated
+anyway. Two compounding process failures: trusting a pipeline exit code, and letting a passing test
+override contradicting evidence instead of reconciling them.
+
+**`5d5441a` was harmless but ineffective:** 0 version changes, `package.json` untouched, 4 WASM
+fallback entries added — but `npm ci` still failed on Linux. It is superseded by `557da30`, not
+reverted, so the history of the investigation stays legible.
+
+#### Effective correction — regenerate on the TARGET platform (`557da30`)
+
+Root cause of the failed first attempt: `npm install --package-lock-only` run **on macOS** resolves
+macOS's dependency view. It can never produce the Linux-only branch of the graph. The fix is to
+resolve on the target:
+
+```
+docker run --rm -v "$PWD/frontend:/app" -w /app node:24-slim npm install --package-lock-only
+```
+
+**Diff audit (vs `5d5441a`):**
+
+| Check | Result |
+|---|---|
+| `package.json` | byte-identical, 0 changes ✅ |
+| Added | 4 — `@emnapi/core@1.11.3` + `@emnapi/runtime@1.11.3` at top level (exactly what npm demanded), plus two nested at 1.11.1 |
+| Removed | 0 |
+| **Version changes** | **0** |
+| Root `dependencies` / `devDependencies` | identical ✅ |
+
+**Verification — real exit codes, no pipelines, corroborated:**
+
+| Environment | Command | Real exit code | Corroboration |
+|---|---|---|---|
+| macOS host | `npm ci` in `frontend/` | **0** | `added 666 packages, audited 667` |
+| Linux container | `docker compose build --no-cache frontend` | **0** | image `fitops-frontend:latest` exists (413 MB); **0 `npm error` lines** in the log |
+
+**Both platforms accept the lockfile** — it is genuinely cross-platform, not Linux-only. The 1.11.3
+entries are additive and displace nothing macOS needs.
+
+**Standing verification rule now in force:** never report PASS from output text. Capture the real
+process exit code, inspect the output, reconcile contradictory evidence, and only then judge. Where
+a pipeline is unavoidable, use `set -o pipefail` or `PIPESTATUS`.
 
 **Deliberately NOT done:** the Dockerfile keeps `npm ci`. Relaxing it to `npm install` would have
 masked the real defect and given up reproducible builds. `package.json` untouched; no dependency
