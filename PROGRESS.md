@@ -26,10 +26,10 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
-| **Current Story** | Story 1.6 — Docker Compose — **COMPLETE** |
+| **Current Story** | Story 1.7 — Testing and Quality Baseline — **IN PROGRESS** |
 | **Overall status** | Epic 01 in progress — 6 of 8 Stories complete |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
-| **Last updated** | 2026-08-14 |
+| **Last updated** | 2026-08-15 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
 
 **Repository state:** git repository initialized on branch `main`, working tree clean. Story 1.1
@@ -579,9 +579,149 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.**
+### Story 1.7 — Testing and Quality Baseline  (Epic 01 — Project Foundation)
 
-Story 1.6 is COMPLETE and accepted. Story 1.7 has **not** been started.
+**Status:** IN PROGRESS — started 2026-08-15. Not complete, not accepted.
+
+**Acceptance criteria (Blueprint §6):** all baseline checks can run locally.
+
+**Approved tool set** (user decision, 2026-08-15 — this closed the pre-implementation gap that the
+Technology Stack names no test/lint/format tooling):
+
+| Side | Approved | Explicitly rejected / deferred |
+|---|---|---|
+| Backend | Django built-in test runner; **Ruff** for lint *and* formatting | pytest, pytest-django; **backend type checking DEFERRED** — no mypy, no django-stubs |
+| Frontend | Vitest, `@testing-library/react`, jsdom, Prettier, `eslint-config-prettier` | jest; existing ESLint + TypeScript setup kept unchanged |
+
+**Scope boundary:** Story 1.8 owns the GitHub Actions pipeline. "Basic CI checks" in Story 1.7
+means the checks are runnable **locally** — no `.github/` workflow is created by this Story.
+
+**Task breakdown** (established and approved before any dispatch):
+
+| ID | Task | Complexity | Worker | Depends | Status |
+|---|---|---|---|---|---|
+| T1 | Backend test + quality baseline (Django test runner wiring, Ruff config, `requirements-dev.txt`, smoke tests) | VERY HARD | Codex | — | **LANDED** `966f2e2` |
+| T2 | Frontend test + formatting baseline (Vitest config, Prettier config, ESLint interop, scripts, smoke test) | MEDIUM | AGY | — | **LANDED** `c17ca85` |
+| T3 | Single local entrypoint running every backend + frontend gate | SIMPLE | OpenCode | T1, T2 | Dispatched |
+
+T1 and T2 are genuinely independent (disjoint directories and dependency files) and run in parallel.
+
+**Master provisioning done before dispatch** (workers have no network):
+
+- `ruff 0.16.3` installed into `/Users/momen/Fitops/.venv`.
+- `vitest 4.1.10`, `@testing-library/react 16.3.2`, `jsdom 29.1.1`, `prettier 3.9.6`,
+  `eslint-config-prettier 10.1.8` installed into the T2 worktree's `frontend/node_modules`;
+  `package.json` / `package-lock.json` updated by that install (Master's change, not the worker's).
+
+**Pre-dispatch empirical check — no React transform plugin is needed.** Before briefing T2, Master
+probed whether Vitest 4 can transform `.tsx` and render a React component using only the approved
+package set. It can: a throwaway config + test rendering a JSX component through
+`@testing-library/react` passed with real exit code 0. `@vitejs/plugin-react` was therefore **not**
+added, and the brief forbids it. The probe files were deleted and the worktree re-verified clean.
+
+**Known consequence — workers cannot run the gates.** Worker sandboxes have no sockets, so Codex
+cannot run `manage.py test` (Django's runner must reach PostgreSQL to create the test database).
+AGY additionally has deliberately narrow command permissions, so it runs no npm/npx command at all
+and authors files only. **Master runs every gate and reports real exit codes.** Applying
+`npm run format` mechanically after T2 lands is Master's step, not the worker's.
+
+**AGY permission handling:** a single temporary rule
+`write_file(<absolute T2 worktree path>)` was added to `~/.gemini/antigravity-cli/settings.json`
+for this dispatch, alongside the pre-existing `command(git status)`. **Removed after T2 landed** —
+the file is back to `command(git status)` only. No broad write rule, no
+`--dangerously-skip-permissions`. AGY reported **no permission denials**, confirming that a
+worktree-scoped `write_file(<path>)` rule is sufficient for a file-authoring task.
+
+---
+
+#### ⚠️ DEFECT FOUND DURING VERIFICATION — `manage.py test` exits 0 while running zero tests
+
+Master ran the backend suite from the **repository root** and got:
+
+```
+$ .venv/bin/python backend/manage.py test
+Ran 0 tests in 0.000s
+NO TESTS RAN
+MANAGE_TEST_EXIT=0        <-- ZERO
+```
+
+Run from **`backend/`** instead:
+
+```
+$ .venv/bin/python manage.py test
+Creating test database for alias 'default'...
+Ran 3 tests in 0.002s
+OK
+Destroying test database for alias 'default'...
+Found 3 test(s).
+MANAGE_TEST_FROM_BACKEND_EXIT=0
+```
+
+**Cause:** Django's runner discovers tests relative to the current working directory, and
+`backend/` is not an importable package (no `__init__.py`). From the root it finds nothing — and
+Django returns exit code **0** for "no tests collected".
+
+**Why it matters:** a check script that runs the backend tests from the wrong directory reports
+SUCCESS while executing nothing. This is the same class of false-green as the Story 1.6
+pipe-masked-exit-code incident.
+
+**Not a defect in T1's deliverable** — the tests are correct and pass from the right directory.
+It is a defect in how the suite must be *invoked*, so the guard belongs in T3's entrypoint. T3's
+brief requires the script to (a) run the Django gate from `backend/`, and (b) treat
+"zero tests collected" as a FAILURE rather than trusting the exit code.
+
+**Carry into Story 1.8:** the CI workflow must invoke the backend suite the same way. Never rely
+on `manage.py test`'s exit code alone as evidence that tests ran.
+
+---
+
+#### Tests proven falsifiable by mutation (not just "green")
+
+A passing test proves nothing if it cannot fail. Both smoke suites were mutation-checked:
+
+| Mutation | Result |
+|---|---|
+| `CELERY_ACCEPT_CONTENT` widened to allow an unsafe non-JSON serializer alongside `json` | `MUTATED_BACKEND_TEST_EXIT=1`, assertion reported the two-element list differing from `['json']` |
+| `<h1>FitOps</h1>` changed to `<h1>NotFitOps</h1>` | `MUTATED_TEST_EXIT=1`, `AssertionError: expected 'NotFitOps' to be 'FitOps'` |
+
+Both sources were restored and the restoration verified by empty `git diff`. The first mutation
+confirms the Story 1.5 JSON-only security requirement is genuinely guarded by a regression test.
+
+---
+
+#### Known issue — `next-env.d.ts` flip-flops between two generators
+
+`next dev` writes `next-env.d.ts` referencing `./.next/dev/types/...`; the standalone
+`next typegen` (which `npm run typecheck` runs) rewrites it to `./.next/types/...`. Whichever
+command ran last dirties the working tree.
+
+**Not functionally broken:** `typecheck` runs `next typegen` first, so it always rewrites the file
+before compiling and passes either way. The committed version is the `typegen` variant.
+
+**Carry into Story 1.8:** if CI ever adds a "working tree must be clean" assertion, this file will
+trip it. Decide there whether to ignore it or normalise it — it is **not** resolved here.
+
+---
+
+#### Verification — all seven gates, run by Master on `main` with real exit codes
+
+Re-run on the merged `main` tree (not in the worktrees), after `npm ci` synced `node_modules`:
+
+| # | Gate | Command | Exit |
+|---|---|---|---|
+| 1 | backend lint | `ruff check .` (from `backend/`) | **0** |
+| 2 | backend format | `ruff format --check .` (from `backend/`) | **0** |
+| 3 | backend tests | `manage.py test` (from `backend/`) | **0** — 3 found, 3 passed, `test_fitops` created + destroyed |
+| 4 | frontend lint | `npm run lint` | **0** |
+| 5 | frontend types | `npm run typecheck` | **0** |
+| 6 | frontend tests | `npm test` | **0** — 2 passed |
+| 7 | frontend format | `npm run format:check` | **0** |
+
+Also verified: `npm ci` succeeds on macOS from the committed lockfile (`MAIN_NPM_CI_EXIT=0`) — the
+Story 1.6 cross-platform lockfile fix still holds. Django system checks pass under default, dev and
+prod settings (all exit 0).
+
+No command output was piped before reading `$?`; every exit code above is the real process status.
 
 ---
 
