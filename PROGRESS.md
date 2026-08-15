@@ -581,7 +581,9 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ### Story 1.7 — Testing and Quality Baseline  (Epic 01 — Project Foundation)
 
-**Status:** IN PROGRESS — started 2026-08-15. Not complete, not accepted.
+**Status:** Implementation COMPLETE and independently verified by Master on 2026-08-15.
+**AWAITING USER ACCEPTANCE** — not yet moved to the Completed section, per the project rule that a
+Story is accepted by the user, not self-declared.
 
 **Acceptance criteria (Blueprint §6):** all baseline checks can run locally.
 
@@ -602,7 +604,7 @@ means the checks are runnable **locally** — no `.github/` workflow is created 
 |---|---|---|---|---|---|
 | T1 | Backend test + quality baseline (Django test runner wiring, Ruff config, `requirements-dev.txt`, smoke tests) | VERY HARD | Codex | — | **LANDED** `966f2e2` |
 | T2 | Frontend test + formatting baseline (Vitest config, Prettier config, ESLint interop, scripts, smoke test) | MEDIUM | AGY | — | **LANDED** `c17ca85` |
-| T3 | Single local entrypoint running every backend + frontend gate | SIMPLE | OpenCode | T1, T2 | Dispatched |
+| T3 | Single local entrypoint running every backend + frontend gate | SIMPLE | OpenCode | T1, T2 | **LANDED** `4fe7073` |
 
 T1 and T2 are genuinely independent (disjoint directories and dependency files) and run in parallel.
 
@@ -725,30 +727,80 @@ No command output was piped before reading `$?`; every exit code above is the re
 
 ---
 
+#### T3 — `infrastructure/scripts/checks.sh` (the single local entrypoint)
+
+Placed in `infrastructure/scripts/` because that directory already exists in the approved
+repository tree (ERD §4). A root `Makefile` was deliberately **not** created — it is not part of
+the approved structure.
+
+Behaviour: runs all seven gates, prints a per-gate PASS/FAIL summary, and exits 0 only if every
+gate passed. Repository root resolved from `BASH_SOURCE` (no hardcoded machine path). Interpreter
+resolved from `<root>/.venv` with a `PATH` fallback and a `FITOPS_PYTHON` override, so it also
+works inside the Docker image where there is no `.venv`. A missing `npm` records the frontend gates
+as **FAILED**, never skipped — a skipped gate must never read as a pass.
+
+**Defect fixed by Master during review:** `printf '-------\n'` was parsed by bash as an option and
+printed `printf: --: invalid option` on every run. Changed to `printf -- '-------\n'`. This was a
+one-line cosmetic fix applied directly rather than a re-dispatch; it is disclosed here and in the
+commit message rather than folded silently into the worker's output.
+
+**Verification of the entrypoint itself, with real exit codes:**
+
+| Scenario | Result |
+|---|---|
+| Full run on `main`, no override (must find `.venv` itself) | `FINAL_CHECKS_EXIT=0`, all 7 gates PASS |
+| Run from an unrelated working directory (`cd /`) | exit 0, repo root resolved correctly |
+| No `.venv` present and no `ruff` on `PATH` | exits non-zero with a clear error instead of proceeding |
+| **Smoke tests removed → Django collects 0 tests** | **exit 1**, gate reports `FAIL: Django collected 0 tests. Exit status 0 is NOT accepted as a pass` |
+
+The last row is the important one: it proves the zero-test guard actually fires, rather than merely
+existing in the source.
+
+---
+
+#### Story 1.7 acceptance criteria
+
+Blueprint AC: *"All baseline checks can run locally."* — **met.** One command,
+`./infrastructure/scripts/checks.sh`, runs all seven gates locally and exits non-zero if any fails.
+
+Blueprint task coverage: backend test setup (Django runner + 3 tests) · frontend test setup
+(Vitest + 2 tests) · linting (Ruff + ESLint) · formatting (Ruff format + Prettier) · type checking
+(TypeScript; **backend type checking deferred by explicit user decision**) · basic CI checks
+(local entrypoint; the GitHub Actions workflow belongs to Story 1.8).
+
+**Worktree hygiene:** all three delegation worktrees were removed after merge; `git worktree list`
+shows only the main tree. No stale worker processes remained — the Antigravity processes on the
+machine are the user's running IDE, not delegation workers, and were correctly left alone.
+
+---
+
 ## Next
 
 | Field | Value |
 |---|---|
 | **Epic** | Epic 01 — Project Foundation |
-| **Story ID** | Story 1.7 |
-| **Story title** | Testing and Quality Baseline |
+| **Story ID** | Story 1.8 |
+| **Story title** | CI/CD Pipeline (GitHub Actions) |
 
-**Why it is next:** Blueprint §6 lists 1.7 after 1.6. Stories 1.1–1.6 are COMPLETE.
+**Why it is next:** Blueprint §6 lists 1.8 after 1.7. Story 1.7 implementation is complete and
+verified, pending user acceptance.
 
-**Scope (Blueprint §6):** backend test setup · frontend test setup · linting · formatting · type
-checking · basic CI checks.
-
-**Acceptance criteria (Blueprint §6):** all baseline checks can run locally.
+**Do NOT start automatically — user approval required.**
 
 **Notes before starting:**
 
-1. **User approval required** — do not start automatically.
-2. Test/lint/format tooling is **not yet installed** for either side — Master must provision
-   (workers have no network).
-3. Frontend already has ESLint 9 from the Story 1.3 scaffold, plus `typecheck` (which correctly runs
-   `next typegen` first). Story 1.7 owns formatting and the test runner.
-4. Backend has **no** test tooling — `manage.py test` currently finds 0 tests.
-5. Story 1.8 owns the GitHub Actions pipeline; 1.7 is local baseline only.
+1. Story 1.7 delivered `infrastructure/scripts/checks.sh`, which runs all seven gates and exits
+   non-zero on any failure. Story 1.8's workflow should invoke that script rather than duplicating
+   the gate list — one definition of "the checks", used identically locally and in CI.
+2. **Carry-in — the zero-test trap.** `manage.py test` exits 0 while collecting zero tests when run
+   from the repository root. `checks.sh` already guards this. If Story 1.8 ever calls Django
+   directly instead of through the script, it must reproduce the guard.
+3. **Carry-in — `next-env.d.ts` churn.** `next dev` and `next typegen` write different contents to
+   that file. If the workflow adds a "working tree must be clean" assertion, this will trip it.
+   Unresolved — decide in Story 1.8.
+4. CI needs PostgreSQL for the backend test gate (a service container or equivalent). It does not
+   need Redis for the current tests, but Celery configuration is asserted from settings only.
+5. Backend dev dependencies come from `backend/requirements-dev.txt`; frontend from `npm ci`.
 
 ---
 
