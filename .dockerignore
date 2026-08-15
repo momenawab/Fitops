@@ -1,0 +1,10 @@
+.git
+.venv
+**/node_modules
+**/.next
+**/__pycache__
+*.pyc
+.env
+staticfiles
+mediafiles
+infrastructure/backups
