@@ -26,8 +26,8 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
-| **Current Story** | Story 1.4 — PostgreSQL Setup — **COMPLETE** |
-| **Overall status** | Epic 01 in progress — 4 of 8 Stories complete |
+| **Current Story** | Story 1.5 — Redis + Celery — **COMPLETE** |
+| **Overall status** | Epic 01 in progress — 5 of 8 Stories complete |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-14 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -60,6 +60,62 @@ Story at a time; do not start the next Story without approval.
 ---
 
 ## Completed
+
+### Story 1.5 — Redis + Celery  (Epic 01 — Project Foundation)
+
+| Field | Value |
+|---|---|
+| **Status** | ✅ COMPLETE |
+| **Date** | 2026-08-15 |
+| **Execution** | Master preflighted Redis and provisioned dependencies; one bounded Codex task implemented; Master reviewed and ran all runtime verification |
+| **Commit** | `a70c73f` |
+
+**Acceptance criteria — 2/2 PASS, proven against live Redis 8.10.0:**
+
+| AC | Evidence |
+|---|---|
+| Celery worker starts | `celery@Momens-Mac-mini.local v5.6.3` · transport `redis://localhost:6379/0` · results `redis://localhost:6379/0` · concurrency 1 (prefork) · `[tasks] . common.tasks.health_check` · **`ready.`** · process alive · clean SIGTERM shutdown |
+| Celery communicates with Redis | `app.control.ping()` → `[{'celery@…': {'ok': 'pong'}}]` · `health_check.delay()` → task `cd99a051-…` → **result `"ok"`**, `successful() True` — a full round trip through Redis |
+
+**Redis preflight (inspection only, nothing installed or modified):** redis-server + redis-cli
+present at `/opt/homebrew/bin` · server PID 1456 listening on `127.0.0.1:6379` and `[::1]:6379` ·
+`PING → PONG` · raw TCP connect OK · Homebrew formula installed, service `started` · **Redis 8.10.0**.
+
+**Provisioned by Master (network work):** `celery==5.6.3`, `redis==8.1.0` — pinned to the versions
+actually installed, not guessed. No transitive pins, no flower, no `django-celery-beat`, no
+`django-celery-results`.
+
+**Implemented:** CELERY settings section in `base.py` (env-driven from `CELERY_BROKER_URL` with
+`REDIS_URL` fallback; result backend defaults to the broker so no new required env var appears) ·
+`config/celery.py` creating the `fitops` app with the `CELERY` namespace and `autodiscover_tasks()` ·
+`config/__init__.py` exporting `celery_app` · `common/tasks.py` with the single `health_check` task.
+
+**Security:** JSON-only serialization enforced — `task_serializer`, `result_serializer` and
+`accept_content` all `json`, verified at runtime. Serializers capable of executing arbitrary code on
+untrusted payloads are not accepted. Broker URL carries no credentials; local Redis needs no auth.
+
+**Architecture guard held.** `autodiscover_tasks()` conventionally scans `INSTALLED_APPS`, but
+`common` is deliberately **not** a Django app (ERD §23: shared infrastructure, not a business
+domain). The brief forbade adding it to `INSTALLED_APPS` and required a stop-and-report if the
+worker thought otherwise. Codex complied — it imported `common.tasks` explicitly in `celery.py` with
+a comment explaining why. **INSTALLED_APPS/LOCAL_APPS unchanged.**
+
+**Scope held — deliberately NOT implemented:** Docker/compose (Story 1.6) · Celery Beat / periodic
+schedules · every real background job named in the Technology Stack (notifications, email sending,
+image processing, subscription reminders, billing renewal alerts, workspace retention cleanup,
+check-in reminders) — those belong to their owning Epics · models, migrations, views, serializers,
+URLs, admin · frontend and docs untouched · root `.env.example` unmodified.
+
+Verified: exactly one `@shared_task` exists in the entire backend; 5 files changed, all under
+`backend/`; no secrets.
+
+**Delegation note:** the brief stated the socket constraint up front (learned in Story 1.4), listed
+only socket-free verification commands, and explicitly forbade `celery worker`, `celery inspect`,
+`redis-cli` and `app.control.ping()` in the worker — so Codex did not waste a run failing on them.
+Master performed all runtime verification. This pattern should be reused for every Story with a
+live-service acceptance criterion.
+
+---
 
 ### Story 1.4 — PostgreSQL Setup  (Epic 01 — Project Foundation)
 
@@ -368,7 +424,7 @@ Documentation work completed to date (not implementation — recorded for contex
 
 **No Story currently in progress.**
 
-Story 1.4 is COMPLETE and accepted. Story 1.5 has **not** been started.
+Story 1.5 is COMPLETE and accepted. Story 1.6 has **not** been started.
 
 ---
 
@@ -377,27 +433,27 @@ Story 1.4 is COMPLETE and accepted. Story 1.5 has **not** been started.
 | Field | Value |
 |---|---|
 | **Epic** | Epic 01 — Project Foundation |
-| **Story ID** | Story 1.5 |
-| **Story title** | Redis + Celery |
+| **Story ID** | Story 1.6 |
+| **Story title** | Docker Compose |
 
-**Why it is next:** Blueprint §6 lists 1.5 immediately after 1.4. Stories 1.1–1.4 are COMPLETE.
+**Why it is next:** Blueprint §6 lists 1.6 immediately after 1.5. Stories 1.1–1.5 are COMPLETE.
 
-**Scope (Blueprint §6, quoted tasks):** add Redis · configure Celery · create worker configuration ·
-create basic health task.
+**Scope (Blueprint §6):** services `frontend`, `backend`, `postgres`, `redis`, `celery`, `nginx`.
 
-**Acceptance criteria (Blueprint §6):** Celery worker starts · Celery can communicate with Redis.
+**Acceptance criteria (Blueprint §6):** the entire development stack starts with Docker Compose ·
+services communicate correctly.
 
-**Known constraints before starting:**
+**⚠️ KNOWN BLOCKER — `docker` is NOT installed on this machine.** Verified during Story 1.1
+pre-flight and never resolved. Story 1.6 cannot be accepted without it, since both acceptance
+criteria require actually starting the stack. Before dispatching:
 
-1. **User approval required** — do not start automatically.
-2. **Redis is not known to be installed or running** — unverified. Story 1.5 needs a live Redis, and
-   `docker` is NOT installed (Docker Compose arrives in Story 1.6), so Redis must come from
-   somewhere else (e.g. Homebrew) or the Story is blocked. Verify before dispatching.
-3. `celery` and `redis` are **not** in `backend/requirements.txt` — installing them is network work,
-   so **Master must provision**, as in Stories 1.3 and 1.4.
-4. Worker sandboxes have no network and no socket access; any Redis/Celery runtime verification must
-   be done by Master.
-5. Confirm no unresolved item in `docs/MISSING_DECISIONS.md` applies (none currently do).
+1. **User approval to start Story 1.6** — do not start automatically.
+2. **Resolve the Docker blocker** — install Docker Desktop / Colima, or explicitly decide to defer
+   Story 1.6 and proceed to Story 1.7. Do not substitute an alternative runtime without approval.
+3. Note that PostgreSQL and Redis currently run natively via Homebrew, not in containers. How the
+   compose stack relates to those running services (ports 5432 and 6379 are already bound) will need
+   a decision.
+4. Worker sandboxes have no network or socket access — Master must run all container verification.
 
 ---
 

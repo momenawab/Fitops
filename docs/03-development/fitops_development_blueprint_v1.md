@@ -399,7 +399,7 @@ audit
 
 ---
 
-## Story 1.5 — Redis + Celery
+## Story 1.5 — Redis + Celery — ✅ COMPLETE (2026-08-15)
 
 ### Tasks
 
