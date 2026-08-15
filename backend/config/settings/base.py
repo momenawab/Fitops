@@ -206,9 +206,7 @@ REST_FRAMEWORK = {
 # --------------------------------------------------------------------
 # CELERY
 # --------------------------------------------------------------------
-CELERY_BROKER_URL = env(
-    "CELERY_BROKER_URL", env("REDIS_URL", "redis://localhost:6379/0")
-)
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", env("REDIS_URL", "redis://localhost:6379/0"))
 CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
