@@ -26,8 +26,8 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
-| **Current Story** | Story 1.5 — Redis + Celery — **COMPLETE** |
-| **Overall status** | Epic 01 in progress — 5 of 8 Stories complete |
+| **Current Story** | Story 1.6 — Docker Compose — **COMPLETE** |
+| **Overall status** | Epic 01 in progress — 6 of 8 Stories complete |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-14 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -60,6 +60,67 @@ Story at a time; do not start the next Story without approval.
 ---
 
 ## Completed
+
+### Story 1.6 — Docker Compose  (Epic 01 — Project Foundation)
+
+| Field | Value |
+|---|---|
+| **Status** | ✅ COMPLETE |
+| **Date** | 2026-08-15 |
+| **Execution** | Master verified Docker; one bounded Codex task; **one bounded rework** (libpq); Master ran all live verification |
+| **Commit** | `1d231c9` |
+
+**Acceptance criteria — 2/2 PASS, verified functionally rather than by container state:**
+
+| AC | Evidence |
+|---|---|
+| Entire stack starts with Docker Compose | `COMPOSE_UP_EXIT=0`; all six services running; postgres and redis `healthy`; backend log `System check identified no issues`, Django 6.0.7 serving on 0.0.0.0:8000; celery log `celery@930981157f5b ready.`; **0 exceptions in either log** |
+| Services communicate correctly | Django → **`172.18.0.2:5432`** (a Docker network address, proving the Compose DB not the native one), query `6*7=42` · Celery broker `redis://redis:6379/0`, `ping → pong`, `health_check.delay()` round-trip → `"ok"`, `successful True` · nginx `/` → 200 proxied to frontend, `/api/` → 200 to backend · direct `:3000` and `:8000` → 200 · container DB/Redis reachable on host `5433`/`6380` |
+
+**Approved port strategy implemented correctly:** host `5433→5432` and `6380→6379`; **all in-network
+traffic uses `postgres:5432` and `redis:6379`**, never the host ports — confirmed at runtime, not
+just by reading the file.
+
+**Native services untouched throughout.** Verified *while the stack was up* and *after teardown*:
+native PostgreSQL :5432 answering, native Redis :6379 `PONG`, Story 1.4's `fitops` database intact at
+**18 `django_migrations` rows**, both Homebrew services still `started`. The Compose PostgreSQL
+started empty by design and nothing was migrated, copied or referenced from the native database.
+
+**Teardown:** `docker compose down --remove-orphans` → exit 0, **0 containers remaining**, network
+removed, host ports 5433/6380/3000/8000/80 all released, native 5432/6379 still held by Homebrew.
+
+**Delivered:** `docker-compose.yml` at repo root · `infrastructure/docker/{backend,frontend}.Dockerfile`
+· `infrastructure/nginx/dev.conf` · `.dockerignore`. backend+celery share `fitops-backend:dev`;
+frontend uses an anonymous volume so the bind mount cannot shadow `node_modules`; both images
+non-root; no secrets (`${VAR:-development-only-change-me}` throughout); **0 changes to backend or
+frontend source**.
+
+#### Rework — missing system library (caught only by reading logs)
+
+`docker compose ps` reported backend as **`Up`** while it was completely non-functional. Both backend
+and celery were failing with:
+
+```
+django.core.exceptions.ImproperlyConfigured: Error loading psycopg2 or psycopg module
+```
+
+Probing the image directly: `import psycopg` → `no pq wrapper available … libpq library not found`;
+`ldconfig -p | grep -c libpq` → **0**. `psycopg==3.3.4` is the pure-Python implementation and needs
+the `libpq` system library at runtime; the host has it via Homebrew PostgreSQL (which is why Stories
+1.2/1.4/1.5 passed), but `python:3.14-slim` does not ship it.
+
+Fixed in **Story 1.6's own file** — `infrastructure/docker/backend.Dockerfile` now installs `libpq5`
+(runtime only, apt lists cleaned in the same layer, before `USER fitops`). **`requirements.txt` was
+deliberately NOT changed and `psycopg[binary]` deliberately NOT substituted** — the pin is correct
+for a host with libpq; the container image was the gap. Proof: `import psycopg` in the rebuilt image
+→ exit 0, `psycopg 3.3.4 OK`.
+
+**Lesson recorded: `docker compose ps` = `Up` is NOT evidence a service works.** Django's `runserver`
+stays alive while unable to load its database backend. Application logs and functional probes are
+authoritative. Had the review stopped at container state, a stack with two dead Python services would
+have been reported as a partial pass.
+
+---
 
 ### Story 1.5 — Redis + Celery  (Epic 01 — Project Foundation)
 
@@ -520,7 +581,7 @@ Documentation work completed to date (not implementation — recorded for contex
 
 **No Story currently in progress.**
 
-Story 1.5 is COMPLETE and accepted. Story 1.6 has **not** been started.
+Story 1.6 is COMPLETE and accepted. Story 1.7 has **not** been started.
 
 ---
 
@@ -529,27 +590,25 @@ Story 1.5 is COMPLETE and accepted. Story 1.6 has **not** been started.
 | Field | Value |
 |---|---|
 | **Epic** | Epic 01 — Project Foundation |
-| **Story ID** | Story 1.6 |
-| **Story title** | Docker Compose |
+| **Story ID** | Story 1.7 |
+| **Story title** | Testing and Quality Baseline |
 
-**Why it is next:** Blueprint §6 lists 1.6 immediately after 1.5. Stories 1.1–1.5 are COMPLETE.
+**Why it is next:** Blueprint §6 lists 1.7 after 1.6. Stories 1.1–1.6 are COMPLETE.
 
-**Scope (Blueprint §6):** services `frontend`, `backend`, `postgres`, `redis`, `celery`, `nginx`.
+**Scope (Blueprint §6):** backend test setup · frontend test setup · linting · formatting · type
+checking · basic CI checks.
 
-**Acceptance criteria (Blueprint §6):** the entire development stack starts with Docker Compose ·
-services communicate correctly.
+**Acceptance criteria (Blueprint §6):** all baseline checks can run locally.
 
-**⚠️ KNOWN BLOCKER — `docker` is NOT installed on this machine.** Verified during Story 1.1
-pre-flight and never resolved. Story 1.6 cannot be accepted without it, since both acceptance
-criteria require actually starting the stack. Before dispatching:
+**Notes before starting:**
 
-1. **User approval to start Story 1.6** — do not start automatically.
-2. **Resolve the Docker blocker** — install Docker Desktop / Colima, or explicitly decide to defer
-   Story 1.6 and proceed to Story 1.7. Do not substitute an alternative runtime without approval.
-3. Note that PostgreSQL and Redis currently run natively via Homebrew, not in containers. How the
-   compose stack relates to those running services (ports 5432 and 6379 are already bound) will need
-   a decision.
-4. Worker sandboxes have no network or socket access — Master must run all container verification.
+1. **User approval required** — do not start automatically.
+2. Test/lint/format tooling is **not yet installed** for either side — Master must provision
+   (workers have no network).
+3. Frontend already has ESLint 9 from the Story 1.3 scaffold, plus `typecheck` (which correctly runs
+   `next typegen` first). Story 1.7 owns formatting and the test runner.
+4. Backend has **no** test tooling — `manage.py test` currently finds 0 tests.
+5. Story 1.8 owns the GitHub Actions pipeline; 1.7 is local baseline only.
 
 ---
 
