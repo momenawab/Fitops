@@ -31,8 +31,8 @@
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
 | **Current Epic** | Epic 02 — Authentication & Identity |
-| **Current Story** | Story 2.3 — Client Profile — **COMPLETE and merged** (2026-08-16) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Stories 2.1, 2.2 and 2.3 complete**; Story 2.4 NOT started |
+| **Current Story** | Story 2.4 — Coach Registration — **COMPLETE and merged** (2026-08-16) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Stories 2.1–2.4 complete**; Story 2.5 NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-15 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -588,7 +588,123 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 2.3 is complete and merged; Story 2.4 has not started.
+**No Story currently in progress.** Story 2.4 is complete and merged; Story 2.5 has not started.
+
+---
+
+## Completed — Story 2.4
+
+### Story 2.4 — Coach Registration  (Epic 02 — Authentication & Identity)
+
+**Status:** ✅ **COMPLETE** — **PR #5 merged as `36d78af7c163a35f2c2c38a76b01ed8897d6de6d`** on
+2026-08-16. Verified: `origin/main` = that SHA, and the merge introduced exactly the seven Story
+2.4 code files and nothing else.
+
+**This was the project's first API endpoint.** `backend/config/urls.py` was previously
+`urlpatterns = []`, so Story 2.4 also established the routing pattern every later endpoint follows.
+
+**Contract delivered (API Specification §4):**
+
+    POST /api/v1/auth/register        Public        201 Created
+    request : {email, password, first_name, last_name}
+    response: {"message": "Account created. Please verify your email.",
+               "requires_email_verification": true}
+
+---
+
+#### Four preflight gaps found in the authoritative documents, and their resolutions
+
+The preflight deliberately did **not** assume the documents were complete. Four genuine gaps were
+found and reported rather than guessed; all four were resolved explicitly by the user:
+
+| Gap | Resolution |
+|---|---|
+| **No email-verification token model exists anywhere in the approved architecture**, yet Story 2.5 requires "expiring token / secure token storage". `LoginOTP` is the *Client OTP login* mechanism, not coach verification | **Stateless signed token** via `default_token_generator`. **No token model added.** Story 2.4 sends the email after commit; Story 2.5 owns verify/resend |
+| **Registration rate limiting is NOT mandated.** API §22's list omits registration; Epic 20 owns authentication rate limiting; no throttle config exists | **No rate limiting added.** Recorded as a known, accepted exposure until Epic 20. An earlier PROGRESS.md revision wrongly claimed it was mandatory — corrected in `b72b7d2` |
+| **Anti-enumeration on registration appears only in CLAUDE.md §19**, the lowest-precedence document, which self-declares it adds no requirements. API §130 is silent | **Generic anti-enumeration.** A duplicate returns the identical 201, creates no second user, and deliberately returns **no `CONFLICT`** |
+| **The API §2 error envelope was never implemented** — `common/exceptions/__init__.py` was 0 bytes and the work had been deferred to a "later API/error-handling Story". The first endpoint made it due | **Implemented as Stream C.** Only documented codes; no invented codes or semantics |
+
+Also resolved: **HTTP 201** for success, and registration creates **`User` only** — no `CoachProfile`.
+
+---
+
+#### Execution — 3 parallel streams, and a real defect the design caught
+
+| ID | Task | Worker | Files |
+|---|---|---|---|
+| A | Registration serializer + view + URL wiring | **Codex** | `accounts/{serializers,views,urls}.py`, `config/urls.py` |
+| B | Registration API tests (19) | **AGY** `gemini-3.7-flash-high` | `tests/test_registration_api.py` |
+| C | API §2 error envelope | **AGY** (separate session/worktree) | `common/exceptions/__init__.py`, `config/settings/base.py` |
+
+OpenCode was **deliberately left idle**: the error envelope is cross-cutting and inherited by every
+future endpoint, so it went to the safer worker rather than being handed to the lightest one to keep
+it busy.
+
+**B — written from the specification, never having seen A's code — caught a genuine API-contract
+violation on first integration:**
+
+```
+FAIL: test_weak_password_returns_400_with_validation_error_envelope
+AssertionError: None is not an instance of <class 'dict'> : Error 'fields' must be a dictionary.
+```
+
+Root cause, confirmed by direct probe rather than inference
+(`errors: {'non_field_errors': [...]}`, `keys: ['non_field_errors']`): `validate_password()` raised
+inside DRF's **object-level** `validate()` hook propagates as `non_field_errors`, so the §2 envelope
+carried no `fields` entry. API §2 requires field-level validation errors under `fields`, and a
+password-strength failure is a `password` error.
+
+**Ownership: A.** The envelope (C) and the tests (B) were both behaving to contract. **Bounded
+rework** was sent to the **same Codex session**, re-raising as
+`serializers.ValidationError({"password": [...]})`. The hook location was deliberately **kept** —
+moving to a field-level validator would silently lose `UserAttributeSimilarityValidator`, which
+needs the constructed `User`.
+
+**A test suite written from the implementation would have asserted the buggy shape and passed.**
+This is the clearest justification so far for writing tests from the specification in parallel
+rather than after the fact.
+
+**Master fixes applied and disclosed** (not folded silently into worker output): six ruff `E501`
+line-length wraps in B's test file — AGY has no command permissions so it could not run ruff and
+miscounted. Message wording only; no test semantics changed.
+
+---
+
+#### Verification and acceptance evidence
+
+**Master-run local verification, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / dev / prod | **0** / **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** — confirming Story 2.4 adds **no model** |
+| Registration tests | **0** — 19 pass |
+| Full suite | **0** — **76 tests** pass against real PostgreSQL |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **0** — `next-env.d.ts` unchanged |
+
+**Mutation-checked — both critical guards proven non-vacuous:**
+
+| Mutation | Result |
+|---|---|
+| Return `409 CONFLICT` for a duplicate email | **2 anti-enumeration assertions fail** |
+| Remove `EXCEPTION_HANDLER` from settings | **6 envelope assertions fail** across 4 tests |
+
+Both files restored **byte-identical** afterwards (`views.py` = `8646288f…`).
+
+**GitHub CI — accepted run
+[31970203175](https://github.com/momenawab/Fitops/actions/runs/31970203175): success.**
+All 9 steps, **none skipped**, `76 test(s) collected`, `All 7 gates passed`, plus the separate
+production build. Tested merge SHA `cebb1b7 = Merge 479dec3 into b72b7d2`.
+
+**PR scope correction before merge.** The PR initially carried **8** files because the tracking
+commit `b72b7d2` had been committed to local `main` but never pushed, so branching swept it in.
+`b72b7d2` was fast-forwarded to `main` and the PR recomputed to **7 code-only files**. Note GitHub
+does **not** recompute an open PR's base when the base branch moves, and pushing to `main` fires no
+`pull_request` event — the base was forced to recompute with the close/reopen technique established
+in Story 1.8, which also triggered the fresh run above.
+
+Commits: `45a90e6` (error envelope) · `360c75a` (endpoint) · `479dec3` (tests).
 
 ---
 
@@ -1405,81 +1521,56 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 | Field | Value |
 |---|---|
 | **Epic** | Epic 02 — Authentication & Identity |
-| **Story ID** | **Story 2.4** |
-| **Story title** | Coach Registration |
+| **Story ID** | **Story 2.5** |
+| **Story title** | Email Verification |
 
-**Do NOT start Story 2.4 automatically — user approval required. No implementation has begun.**
+**Do NOT start Story 2.5 automatically — user approval required. No implementation has begun.**
 
-**Blueprint §7 Story 2.4, verbatim and complete:**
+**Blueprint §7 Story 2.5, verbatim and complete:**
 
 ```
-## Story 2.4 — Coach Registration
+## Story 2.5 — Email Verification
 
-### API
+Implement:
 
-POST /auth/register
+POST /auth/email/verify
+POST /auth/email/resend
 
-### Flow
+Requirements:
 
-Register
- ↓
-Create User
- ↓
-Send verification email
- ↓
-Verify
+- Expiring token
+- Secure token storage
+- Rate limiting
+- Generic responses where necessary
 ```
 
-**Notes before starting Story 2.4 — this Story is a significant shift:**
+**Notes before starting Story 2.5 — carried directly from the Story 2.4 preflight:**
 
-1. **It is the first Story with an API surface.** Stories 2.1–2.3 were models only. 2.4 introduces
-   the first endpoint, and therefore the first serializer, view and URL wiring. Read **API
-   Specification §4 (auth)** for the exact contract — request/response shape, status codes and the
-   standard error envelope — and implement exactly that. Invent no endpoint.
-2. **Anti-enumeration** — see the resolved decisions below.
-3. ⚠️ **CORRECTION.** An earlier revision of this file stated *"Rate limiting is mandatory on
-   registration (API §22)."* **That was wrong.** API §22's mandatory list is: login, password reset,
-   email verification, client OTP request, client OTP verify, file uploads, public application
-   endpoints, and sensitive admin actions. **Registration is not on it.** Authentication rate
-   limiting is owned by **Epic 20**, and there is currently no throttle configuration in the
-   codebase at all. See the resolved decisions below.
-4. **Email goes through Django's email backend only** — never a provider SDK. The SMTP provider is
-   deliberately unselected in `docs/MISSING_DECISIONS.md` and blocks nothing: dev settings use the
-   console backend.
-5. The verification **endpoints** belong to **Story 2.5** (`POST /auth/email/verify` / `resend`).
-   See the resolved token decision below for the 2.4/2.5 boundary.
-6. `User` uses `AbstractBaseUser` **without** `PermissionsMixin`, and there is deliberately **no**
-   `create_superuser`. Create users through `UserManager.create_user`.
-7. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 2.4.
+1. **The token mechanism is already decided and already in use.** Story 2.4 sends the verification
+   email using a **stateless signed token** (`default_token_generator`) with **no token model**,
+   because none exists anywhere in the approved architecture. Story 2.5 must **verify** that same
+   token. Do **not** introduce a token model without an explicit architecture decision and a
+   documentation update.
+2. **"Secure token storage" is satisfied by storing nothing.** A stateless signed token is not
+   persisted, so there is no storage to secure. Record that reasoning rather than inventing a table
+   to satisfy the wording literally.
+3. **Rate limiting IS mandated here** — unlike registration. API §22's list explicitly includes
+   *email verification*. This is the first Story that must add throttling, and **no throttle
+   configuration exists in the codebase yet** (`DEFAULT_THROTTLE_CLASSES` / `DEFAULT_THROTTLE_RATES`
+   are unset). Expect that to be real work, and check whether it conflicts with Epic 20's ownership
+   of *authentication* rate limiting before deciding scope.
+4. **`/auth/email/resend` must avoid account enumeration** — API §188 states this explicitly, unlike
+   registration where only CLAUDE.md §19 did. Generic response regardless of whether the email
+   exists.
+5. **`User.email_verified_at`** already exists as a nullable timestamp (Story 2.1). Verification
+   sets it; there is no boolean flag and none may be added.
+6. **The API §2 error envelope now exists** (`common/exceptions/`), so new endpoints inherit it
+   automatically. Use only the documented closed code list — `INVALID_OTP` and `OTP_EXPIRED` exist,
+   but confirm from the API Specification which codes apply to email verification before using them.
+7. The routing pattern is established: `config/urls.py` includes `apps.accounts.urls` under
+   `api/v1/`. Add routes there, with **no trailing slash**, matching `/auth/email/verify`.
+8. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 2.5.
 
----
-
-#### Story 2.4 — resolved decisions (user, 2026-08-16), recorded before dispatch
-
-The Story 2.4 preflight surfaced four genuine gaps in the authoritative documents. All four were
-reported rather than guessed, and resolved explicitly:
-
-| # | Gap found in preflight | Resolution |
-|---|---|---|
-| 1 | **No email-verification token model exists anywhere in the approved architecture.** Documented models are `User`, `CoachSecurity`, `LoginOTP`, `Workspace`, `Membership`, `CoachProfile`, `ClientProfile` plus business/billing models; `LoginOTP` is explicitly the *Client OTP login* mechanism, not coach email verification. Yet Story 2.5 requires "expiring token / secure token storage" | Use a **stateless signed token** via Django's approved signing/token mechanism. **No new token model.** Story 2.4 sends the verification email **after** successful user creation and transaction commit; Story 2.5 owns the verify and resend endpoints and must not be implemented in 2.4 |
-| 2 | **Registration rate limiting is NOT mandated.** API §22's list omits registration; Epic 20 owns authentication rate limiting; no throttle config exists in the codebase | **Do NOT add registration rate limiting.** Inventing a throttle would add an unapproved requirement. Recorded as a known, accepted exposure until Epic 20 |
-| 3 | **Anti-enumeration on registration appears only in CLAUDE.md §19** — the lowest-precedence document, which self-declares it adds no requirements. API §130 is silent, while §188 (resend) and §321 (forgot) state it explicitly | Use **generic anti-enumeration behaviour**. A duplicate registration must not reveal whether the email exists, must not create a second user, and must **not** return `CONFLICT`. The documented response leaks nothing — no id, no email echo |
-| 4 | **The API §2 error envelope was never implemented.** `backend/common/exceptions/__init__.py` is 0 bytes; PROGRESS.md recorded it deferred to a "later API/error-handling Story". Story 2.4 is the first endpoint, so DRF's default error shape would ship a contract violation | **Approved as Stream C** — implement the documented §2 envelope now. Only the documented error codes; no invented codes or semantics |
-
-**Also resolved:** registration returns **HTTP 201 Created** (the API spec gives no status code).
-Registration creates **`User` only** — no `CoachProfile`, since the Blueprint flow says "Create
-User" and the request carries no profile fields.
-
-**Worker assignment for 2.4:** A → Codex (serializer/view/URL wiring, hardest); B → AGY
-(independent API tests); C → AGY in a **separate** isolated worktree and session (error envelope).
-**OpenCode stays idle by explicit decision** — the error envelope is cross-cutting and inherited by
-every future endpoint, so it was assigned to the safer worker rather than handed to the lightest
-one to keep it busy.
-
-**Parallelism outlook for 2.4.** Unlike 2.1–2.3, this Story has genuinely separable layers —
-serializer/validation, view/URL wiring, and tests — but they are **coupled through the API
-contract** and several share files. Expect the honest split to be roughly 2-way again, with a
-third stream only if a real independent artifact exists. Do not manufacture one.
 
 **Carry-ins still live:**
 
@@ -1495,19 +1586,22 @@ third stream only if a real independent artifact exists. Do not manufacture one.
    and 1.7).
 4. **Docker frontend build** — `infrastructure/docker/frontend.Dockerfile:6` runs the same
    `npm ci`, so `5719c2c` probably repaired it too. **Not verified** — the image was not rebuilt.
-5. **Blueprint tracking marker** — Stories 1.1–1.6 and now 1.8 carry `✅ COMPLETE (date)` headings
-   in `docs/03-development/fitops_development_blueprint_v1.md`, but **Story 1.7 still does not**,
-   despite being complete and user-accepted. Pure tracking housekeeping in an architecture
-   document; **not applied — still awaiting explicit approval.**
+5. ~~**Blueprint tracking marker** — Stories 1.7 and 2.1 lacked `✅ COMPLETE (date)` headings~~
+   ✅ **RESOLVED 2026-08-16.** Markers applied for Stories **1.7**, **2.1** and **2.4** under
+   explicit user approval, as a grouped tracking-only change. All completed Stories 1.1–1.8 and
+   2.1–2.4 now carry the heading consistently. The Blueprint diff was exactly three heading lines —
+   no architecture, requirement or content change.
 
 ---
 
 ## Decisions Made During Implementation
 
-Implementation-level decisions taken during Stories 1.1–1.7 are recorded **inline in each Story's
+Implementation-level decisions taken during Stories 1.1–2.4 are recorded **inline in each Story's
 own section above**, next to the evidence that justified them (for example: the ERD §24 app-list
-correction in Story 1.1, the `libpq5` fix in Story 1.6, and the approved test/lint/format tool set
-in Story 1.7). They are not duplicated here, so that a single Story's record stays self-contained.
+correction in Story 1.1, the `libpq5` fix in Story 1.6, the approved test/lint/format tool set in
+Story 1.7, the AbstractBaseUser-without-PermissionsMixin decision in Story 2.1, and the four
+preflight resolutions in Story 2.4). They are not duplicated here, so that a single Story's record
+stays self-contained.
 
 Architecture and product decisions are **not** recorded here — they live in the Development
 Blueprint decision log (§2A: v1.1 decisions 1–18; §2B: v1.2 billing decisions 19–37 and v1.2.1

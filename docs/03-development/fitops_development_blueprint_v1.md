@@ -435,7 +435,7 @@ nginx
 
 ---
 
-## Story 1.7 — Testing and Quality Baseline
+## Story 1.7 — Testing and Quality Baseline — ✅ COMPLETE (2026-08-15)
 
 ### Tasks
 
@@ -493,7 +493,7 @@ Authenticated User + Platform Role
 
 ---
 
-## Story 2.1 — Custom User Model
+## Story 2.1 — Custom User Model — ✅ COMPLETE (2026-08-16)
 
 ### Tasks
 
@@ -546,7 +546,7 @@ Client identity is global.
 
 ---
 
-## Story 2.4 — Coach Registration
+## Story 2.4 — Coach Registration — ✅ COMPLETE (2026-08-16)
 
 ### API
 
