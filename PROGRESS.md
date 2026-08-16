@@ -31,8 +31,8 @@
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
 | **Current Epic** | Epic 02 — Authentication & Identity |
-| **Current Story** | Story 2.4 — Coach Registration — **COMPLETE and merged** (2026-08-16) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Stories 2.1–2.4 complete**; Story 2.5 NOT started |
+| **Current Story** | Story 2.5 — Email Verification — **COMPLETE and merged** (2026-08-17) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Stories 2.1–2.5 complete**; Story 2.6 NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-15 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -588,9 +588,17 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
+**No Story currently in progress.** Story 2.5 is complete and merged; Story 2.6 has not started.
+
+---
+
+## Completed — Story 2.5
+
 ### Story 2.5 — Email Verification  (Epic 02 — Authentication & Identity)
 
-**Status:** IN PROGRESS — two workers dispatched in parallel on 2026-08-16. **Not complete.**
+**Status:** ✅ **COMPLETE** — **PR #6 merged as `8c3b016d82d196af8a380f8c51977d8661e3e966`** on
+2026-08-17. Verified: `origin/main` equals that SHA from both git and the GitHub API, and the merge
+introduced exactly the six Story 2.5 files and nothing else.
 
 **Blueprint §7 Story 2.5:** implement `POST /auth/email/verify` and `POST /auth/email/resend`.
 Requirements: *Expiring token · Secure token storage · Rate limiting · Generic responses where
@@ -682,6 +690,88 @@ fix — the API Specification and DB & Auth Architecture agree, and the OTP-vs-v
 was verified to be correct in context rather than contradictory. Manufacturing a third stream would
 be artificial. A must own `settings/base.py` for throttle configuration, so no other stream may
 touch it.
+
+---
+
+#### Two review findings, both fixed by bounded rework
+
+**1. O(n) cryptographic scan on a public endpoint.** The first implementation resolved the user by
+iterating **every unverified row** and running an HMAC per row, because the documented request body
+is `{"token": ...}` only. With 10,000 unverified users a single request cost 10,000 HMACs — a
+request-amplification vector that the 10/min throttle bounds per client but not across rotated
+sources.
+
+Fixed by encoding the user id **inside the opaque token** as a `uidb64` prefix, exactly as Django's
+own password-reset links do. **The request contract is unchanged** — still `{"token": ...}` — because
+the token value is opaque and its internal format is not part of the API contract. Verification now
+decodes the uid and performs a single primary-key lookup.
+
+*Proven, not asserted:* a query probe with **26 users** shows verification issues **4 queries** and
+does not scale with user count.
+
+⚠️ **Failure-uniformity risk this created, and how it was contained.** The uid path introduced new
+ways to fail that the scan did not have — malformed uid, uid decoding to no user, tampered
+signature. If any produced a distinct response, the fix would have **reintroduced enumeration
+through a side door**. All of them, plus already-verified, return the identical 400.
+
+**2. Missing `fields` in the error envelope.** Invalid-token errors raised a **bare-string**
+`ValidationError`, so the API §2 envelope omitted `fields`. This is the **same defect class**
+corrected in Story 2.4 (weak password). Fixed to `{"token": [INVALID_VERIFICATION_TOKEN_MESSAGE]}`,
+keeping the message identical for invalid and expired.
+
+**3. Test-side, not implementation.** The method-not-allowed tests issued four requests against a
+3/minute endpoint, and DRF throttles **before** method dispatch, so the fourth returned 429 rather
+than 405. The implementation was correct — the test consumed its own budget. `cache.clear()` now
+runs per sub-test, applied to the verify loop too, which was fragile for the same reason.
+
+**Master fixes applied and disclosed** (not folded silently into worker output): the token
+extraction helper used a character class excluding `:` and so **silently truncated the uid prefix**
+once the token format changed, rejecting valid tokens; it was rewritten format-agnostic. Import
+order was corrected for ruff `I001`. **No assertion was changed.**
+
+---
+
+#### Verification and acceptance evidence
+
+**Master-run local verification, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / dev / prod | **0** / **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** — confirming **no model** was introduced |
+| Focused Story 2.5 tests | **0** — 31 pass |
+| Full suite | **0** — **107 tests** pass against real PostgreSQL |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **0** — `next-env.d.ts` unchanged |
+
+**Mutation-checked — all five guards proven non-vacuous:**
+
+| Mutation | Result |
+|---|---|
+| Envelope reverted to a bare-string error | **2 failures** |
+| `email_verified_at` dropped from the token hash (breaks single-use) | **2 failures** |
+| `resend` returns 404 for an unknown email (breaks anti-enumeration) | **7 failures** |
+| Throttle rates widened to 1000/minute | **2 failures** |
+| O(1) lookup | proven by query probe — 26 users, 4 queries |
+
+All mutated files were restored **byte-identical** afterwards.
+
+**GitHub CI — accepted run
+[31973449870](https://github.com/momenawab/Fitops/actions/runs/31973449870): success.** All 9 steps,
+**none skipped**, `107 test(s) collected`, `All 7 gates passed`, plus the separate production build.
+Tested merge SHA `592f692 = Merge 4d0748c into 0195260`.
+
+**PR scope correction before merge.** The PR initially carried 7 files because the decisions commit
+`0195260` had been committed to local `main` but never pushed. It was fast-forwarded to `main` and
+the PR recomputed to **6 code-only files**. This was the **second consecutive Story** with that slip;
+the standing correction is to **push tracking commits when they are made, not at PR time**.
+
+**Merge.** PR #6 merged as `8c3b016d82d196af8a380f8c51977d8661e3e966`, using an explicit
+`--match-head-commit 4d0748c…` guard after an earlier attempt was rejected for a stale SHA. Verified
+post-merge: `origin/main` equals the merge commit from both git and the GitHub API, the merge
+introduced exactly the six files, and `checks.sh` exits 0 with 107 tests on the merged tree.
+
+Commits: `81a4f9f` (endpoints) · `4d0748c` (tests).
 
 ---
 
@@ -1614,55 +1704,54 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 | Field | Value |
 |---|---|
 | **Epic** | Epic 02 — Authentication & Identity |
-| **Story ID** | **Story 2.5** |
-| **Story title** | Email Verification |
+| **Story ID** | **Story 2.6** |
+| **Story title** | Coach Login |
 
-**Do NOT start Story 2.5 automatically — user approval required. No implementation has begun.**
+**Do NOT start Story 2.6 automatically — user approval required. No implementation has begun.**
 
-**Blueprint §7 Story 2.5, verbatim and complete:**
+**Blueprint §7 Story 2.6, verbatim:**
 
 ```
-## Story 2.5 — Email Verification
+## Story 2.6 — Coach Login
 
 Implement:
 
-POST /auth/email/verify
-POST /auth/email/resend
+POST /auth/login
 
-Requirements:
+Flow:
 
-- Expiring token
-- Secure token storage
-- Rate limiting
-- Generic responses where necessary
+Email + Password
+       ↓
+Credentials Valid
+       ↓
+2FA Enabled?
+   ┌───┴───┐
+  YES      NO
+   ↓        ↓
+2FA      Session
+   ↓
+Session
 ```
 
-**Notes before starting Story 2.5 — carried directly from the Story 2.4 preflight:**
+**Notes before starting Story 2.6 — carried from earlier Stories:**
 
-1. **The token mechanism is already decided and already in use.** Story 2.4 sends the verification
-   email using a **stateless signed token** (`default_token_generator`) with **no token model**,
-   because none exists anywhere in the approved architecture. Story 2.5 must **verify** that same
-   token. Do **not** introduce a token model without an explicit architecture decision and a
-   documentation update.
-2. **"Secure token storage" is satisfied by storing nothing.** A stateless signed token is not
-   persisted, so there is no storage to secure. Record that reasoning rather than inventing a table
-   to satisfy the wording literally.
-3. **Rate limiting IS mandated here** — unlike registration. API §22's list explicitly includes
-   *email verification*. This is the first Story that must add throttling, and **no throttle
-   configuration exists in the codebase yet** (`DEFAULT_THROTTLE_CLASSES` / `DEFAULT_THROTTLE_RATES`
-   are unset). Expect that to be real work, and check whether it conflicts with Epic 20's ownership
-   of *authentication* rate limiting before deciding scope.
-4. **`/auth/email/resend` must avoid account enumeration** — API §188 states this explicitly, unlike
-   registration where only CLAUDE.md §19 did. Generic response regardless of whether the email
-   exists.
-5. **`User.email_verified_at`** already exists as a nullable timestamp (Story 2.1). Verification
-   sets it; there is no boolean flag and none may be added.
-6. **The API §2 error envelope now exists** (`common/exceptions/`), so new endpoints inherit it
-   automatically. Use only the documented closed code list — `INVALID_OTP` and `OTP_EXPIRED` exist,
-   but confirm from the API Specification which codes apply to email verification before using them.
-7. The routing pattern is established: `config/urls.py` includes `apps.accounts.urls` under
-   `api/v1/`. Add routes there, with **no trailing slash**, matching `/auth/email/verify`.
-8. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 2.5.
+1. **Rate limiting IS mandated here.** API §22 lists *Login* explicitly, and Blueprint Story 20.3
+   (Authentication Hardening) also names login rate limits. Confirm ownership before deciding scope,
+   and reuse the **scoped-throttle** pattern established in Story 2.5 — there is still deliberately
+   **no** global throttling.
+2. **Sessions come from Django's session framework.** There is **no** `UserSession` model, no
+   `token_hash`, and no JWT. Login creates a Django session; `POST /auth/logout` terminates it.
+   Per-session listing and revocation were removed from the MVP.
+3. **2FA is TOTP only** and its state lives on `CoachSecurity`, a model that **does not exist yet**.
+   Check whether Story 2.6 needs it, or whether the 2FA branch belongs to a later Story — the
+   Blueprint flow shows the branch but the model may not be in scope here. **Resolve this in
+   preflight; do not assume.**
+4. **`EMAIL_NOT_VERIFIED` and `TWO_FACTOR_REQUIRED` are documented error codes.** Read API §4 for
+   the exact login contract before deciding which apply. Invent no code outside the closed list.
+5. **Anti-enumeration:** confirm from API §4 what login must return for a wrong password versus an
+   unknown email. `INVALID_CREDENTIALS` exists in the closed list.
+6. The API §2 error envelope and the scoped-throttle pattern are both live and inherited.
+7. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 2.6.
 
 
 **Carry-ins still live:**

@@ -568,7 +568,7 @@ Verify
 
 ---
 
-## Story 2.5 — Email Verification
+## Story 2.5 — Email Verification — ✅ COMPLETE (2026-08-17)
 
 Implement:
 
