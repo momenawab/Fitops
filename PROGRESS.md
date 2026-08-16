@@ -30,8 +30,8 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
-| **Current Story** | Story 1.7 — Testing and Quality Baseline — **COMPLETE and accepted** |
-| **Overall status** | Epic 01 in progress — **7 of 8 Stories complete**; Story 1.8 NOT started |
+| **Current Story** | Story 1.8 — CI Pipeline — **IN PROGRESS** (workflow rebuilt and verified locally; PR run still required) |
+| **Overall status** | Epic 01 in progress — **7 of 8 Stories complete**; Story 1.8 in progress |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-15 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -587,9 +587,113 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.**
+### Story 1.8 — CI Pipeline  (Epic 01 — Project Foundation)
 
-Story 1.7 is COMPLETE and accepted. Story 1.8 has **not** been started.
+**Status:** IN PROGRESS. **NOT complete, NOT accepted.**
+
+**Acceptance / DoD (Blueprint §6, verbatim):** *"Pull requests automatically run required checks."*
+This DoD requires a **real GitHub pull-request workflow run**. It cannot be satisfied by local
+verification alone, and the Story must not be marked complete until an actual Actions run on a PR
+has passed.
+
+**Blueprint tasks:** GitHub Actions workflow for backend tests · frontend tests · linting ·
+type checking · build validation.
+
+---
+
+#### ⚠️ Session incident — a Codex CLI session produced work that was LOST
+
+Between 2026-08-15 and this entry, the Master role was temporarily handed to a Codex CLI session.
+State verified directly from git at resume, **not** taken from that session's own report:
+
+**What survived (verified):**
+
+- `origin/main` was fast-forwarded to `207bd01`. Confirmed by `git ls-remote origin main` and
+  `git rev-list --left-right --count origin/main...main` → `0 0`. All 15 accepted Epic 01 commits
+  are now on GitHub. **This resolves the earlier "nothing pushed" carry-in.**
+- Verification runs were executed (`checks.sh` exit 0, `npm run build` exit 0). Both were
+  independently re-confirmed at resume.
+
+**What was lost (verified):**
+
+- **HEAD never moved.** It remained at `207bd01`; the Codex session committed nothing.
+- Branch `codex/story-1.8-t1` existed with **zero commits** (pointed at `207bd01`).
+- The T1 deliverable `.github/workflows/ci.yml` existed **only** as an untracked file inside the
+  worktree `/private/tmp/fitops-story-1.8-t1`. That directory was **deleted**, the file was never
+  committed, and no stash existed. Searches of `/private/tmp` and `/tmp` found nothing.
+  **The file was unrecoverable and had to be rebuilt.**
+- No PR and no workflow run were ever created.
+
+**Root cause:** the review gate passed but the **commit gate never ran**. The standing rule
+*"workers never commit; Master commits after review"* only protects work if the Master's commit
+actually happens **before** the worktree is discarded. Uncommitted work in a temporary worktree is
+not durable.
+
+**Standing correction:** commit reviewed work to its branch **before** removing any worktree, and
+treat a `prunable` worktree as a signal that uncommitted work may already be gone.
+
+**Also left behind and cleaned up at resume:**
+
+| Artifact | Action |
+|---|---|
+| Root `AGENTS.md` (43,782 bytes) — a copy of `CLAUDE.md` with "Claude" rewritten to "Codex", corrupting instructions such as the reading-order rule and "Codex implementation rules (Blueprint §34)" | **Deleted** (user-approved). **Third occurrence.** Deliberately **NOT** added to `.gitignore` so any future reappearance stays visible |
+| Stale `prunable` worktree `/private/tmp/fitops-story-1.8-t1` | Pruned |
+| Orphan branch `codex/story-1.8-t1` (0 commits) | Deleted |
+| `docs/CODEX_SESSION_HANDOFF.md` (21 KB, untracked) | Its workflow specification was merged into this file (below); the duplicate handoff was **deleted** (user-approved) to avoid two handoff documents drifting apart. Its "Critical Lessons" were already fully covered by `docs/MASTER_HANDOFF.md` §8 |
+
+---
+
+#### Approved Story 1.8 workflow specification
+
+Preserved from the Codex session's handoff before that file was deleted. This is the specification
+the workflow must satisfy:
+
+- Trigger **only** on `pull_request` targeting `main`.
+- Least-privilege permissions (`contents: read`).
+- Official checkout and runtime setup actions.
+- **Python 3.14**, **Node 24**.
+- Provision **PostgreSQL 16** for the backend tests.
+- Supply PostgreSQL environment variables matching Django's settings.
+- `DJANGO_SECRET_KEY` only as a CI-safe throwaway value — **never** a production credential.
+- Install backend dev dependencies from `backend/requirements-dev.txt`.
+- Install frontend dependencies with `npm ci`.
+- Run `./infrastructure/scripts/checks.sh` for the approved seven-gate baseline.
+- Run `npm run build` separately in `frontend/` for production-build validation.
+- **Do NOT** use `pull_request_target`.
+- **Do NOT** add Docker, Redis, deployment, coverage, security scanning, or branch protection.
+- **Do NOT** add a clean-tree assertion (see the `next-env.d.ts` carry-in).
+- **Do NOT** modify application code, dependencies, or Story 1.7 tooling.
+- Keep `frontend/next-env.d.ts` unchanged.
+
+---
+
+#### Rebuilt deliverable — `.github/workflows/ci.yml`
+
+Rebuilt by Master **inline** rather than re-delegated: the design was fully specified above, only
+the file itself was lost, and a fresh delegation risked repeating the same loss for a single
+well-specified file. Disclosed here rather than presented as delegated work.
+
+Design notes:
+- One job, because `checks.sh` needs **both** the Python and Node toolchains present.
+- `npm ci` runs **before** `checks.sh`, since four of the seven gates are frontend gates.
+- The workflow **invokes `checks.sh`** rather than restating the gate list — one definition of
+  "the checks", shared by local runs and CI, which also inherits the zero-test guard.
+- Build validation is a **separate** step; `npm run build` is deliberately **not** one of the seven
+  baseline gates and was not added to `checks.sh` (that file belongs to accepted Story 1.7).
+- No `github.event.*` value is interpolated anywhere, so there is no script-injection surface.
+
+**Verification by Master, real exit codes:**
+
+| Check | Result |
+|---|---|
+| YAML parses; structure asserted | **OK** — trigger `pull_request` → `[main]` only; `pull_request_target` absent; `permissions.contents: read`; service image `postgres:16`; env keys match `base.py` |
+| `./infrastructure/scripts/checks.sh` | **exit 0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **exit 0** — 4 routes prerendered |
+| `frontend/next-env.d.ts` after build | **UNCHANGED** — blob `ce4e94a6b10f160ee021fe18939af160d2927dcf` before and after |
+
+**Remaining to finish Story 1.8 (NOT yet done, requires explicit approval):** push a branch, open a
+PR against `main`, and observe a **real** GitHub Actions pull-request run pass. Until that run
+passes, the DoD is unmet and the Story stays IN PROGRESS.
 
 ---
 
@@ -797,28 +901,49 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 
 | Field | Value |
 |---|---|
-| **Epic** | Epic 01 — Project Foundation |
-| **Story ID** | Story 1.8 |
-| **Story title** | CI/CD Pipeline (GitHub Actions) |
+**Immediate next action — finish the CURRENT Story (1.8), not a new one.**
 
-**Why it is next:** Blueprint §6 lists 1.8 after 1.7. Story 1.7 implementation is complete and
-verified, pending user acceptance.
+Story 1.8's workflow is rebuilt, verified locally and committed. Its DoD —
+*"Pull requests automatically run required checks"* — is **still unmet**, because it requires a
+**real GitHub Actions pull-request run**.
 
-**Do NOT start automatically — user approval required.**
+Remaining steps, **each requiring explicit user approval** (Master must not push or open a PR on its
+own initiative):
 
-**Notes before starting:**
+1. Push a branch carrying the workflow commit.
+2. Open a pull request against `main`.
+3. Verify the PR diff is exactly `.github/workflows/ci.yml`.
+4. Wait for and **inspect the real Actions run** — a green tick is not enough; confirm the seven
+   gates and the build step actually executed.
+5. **Do not merge without separate explicit approval.**
 
-1. Story 1.7 delivered `infrastructure/scripts/checks.sh`, which runs all seven gates and exits
-   non-zero on any failure. Story 1.8's workflow should invoke that script rather than duplicating
-   the gate list — one definition of "the checks", used identically locally and in CI.
-2. **Carry-in — the zero-test trap.** `manage.py test` exits 0 while collecting zero tests when run
-   from the repository root. `checks.sh` already guards this. If Story 1.8 ever calls Django
-   directly instead of through the script, it must reproduce the guard.
-3. **Carry-in — `next-env.d.ts` churn.** `next dev` and `next typegen` write different contents to
-   that file. If the workflow adds a "working tree must be clean" assertion, this will trip it.
-   Unresolved — decide in Story 1.8.
-4. CI needs PostgreSQL for the backend test gate (a service container or equivalent). It does not
-   need Redis for the current tests, but Celery configuration is asserted from settings only.
+Known risk to watch on the first real run: the workflow pins **Python 3.14** and **Node 24**. If a
+runner image cannot provide either, the run fails on setup rather than on a genuine defect — read
+the log before concluding the pipeline is wrong.
+
+**After Story 1.8 is accepted:**
+
+| Field | Value |
+|---|---|
+| **Epic** | Epic 02 — Authentication & Identity |
+| **Story ID** | Story 2.1 |
+| **Story title** | Custom User Model |
+
+**Do NOT start Epic 02 automatically — user approval required.** Epic 02 is the first Epic that
+creates real models and migrations, so re-read the Database & Auth Architecture before any code.
+
+**Carry-ins still live:**
+
+1. **`next-env.d.ts` churn** — `next dev` and `next typegen` write different contents to that file.
+   The committed workflow deliberately adds **no** clean-tree assertion, so it does not trip. Still
+   **unresolved** as a general matter; `npm run build` was verified **not** to modify the file
+   (blob `ce4e94a6b10f160ee021fe18939af160d2927dcf` unchanged).
+2. **Zero-test trap** — guarded inside `checks.sh`, which the workflow invokes. If any future CI
+   step calls Django directly instead of through the script, it **must** reproduce the guard.
+3. **Blueprint tracking marker** — Stories 1.2–1.6 carry `✅ COMPLETE (date)` headings in
+   `docs/03-development/fitops_development_blueprint_v1.md`, but **Story 1.7 does not**, despite
+   being complete and user-accepted. Pure tracking housekeeping in an architecture document;
+   **not applied — awaiting explicit approval.**
 5. Backend dev dependencies come from `backend/requirements-dev.txt`; frontend from `npm ci`.
 
 ---
@@ -880,7 +1005,8 @@ When an unresolved decision affects implementation, record it here as:
 |---|---|---|---|---|
 | **`next-env.d.ts` churn between `next dev` and `next typegen`** | `next dev` writes `import "./.next/dev/types/..."`; the standalone `next typegen` (which `npm run typecheck` runs) rewrites it to `./.next/types/...`. Whichever ran last dirties the working tree. **Not functionally broken** — `typecheck` runs `typegen` first and self-corrects, so the gate passes either way. The committed version is the `typegen` variant | 1.3 → **carry-in to 1.8** | **OPEN — unresolved by decision** | If the Story 1.8 workflow adds a "working tree must be clean" assertion, this will trip it. Decide in 1.8 whether to ignore the path, normalise it, or drop the assertion. **Do not resolve it silently** |
 | **`manage.py test` exits 0 while collecting zero tests** | Run from the repository root, Django's runner discovers nothing (`backend/` is not an importable package) and still returns exit code 0 — a false green. Verified directly | 1.7 → **carry-in to 1.8** | **Mitigated locally, open for CI** | `infrastructure/scripts/checks.sh` already runs the gate from `backend/` and fails on "no tests collected". Story 1.8 should invoke that script rather than calling Django directly; if it ever calls Django directly it MUST reproduce the guard |
-| **Local `main` is 14 commits ahead of `origin/main`** | Nothing from Epic 01 has been pushed to `https://github.com/momenawab/Fitops.git`. Story 1.8 wires GitHub Actions, whose DoD is "pull requests automatically run required checks" — that cannot be observed until commits reach the remote | 1.8 | **Open — user's call** | Master must **not** push without explicit instruction. Confirm with the user when Story 1.8 begins |
+| ~~Local `main` is 14 commits ahead of `origin/main`~~ | Nothing from Epic 01 had been pushed to `https://github.com/momenawab/Fitops.git` | 1.8 | ✅ **RESOLVED 2026-08-15** | A Codex CLI session pushed with user authorisation. Verified at resume: `git ls-remote origin main` → `207bd01`, and `git rev-list --left-right --count origin/main...main` → `0 0` |
+| **Uncommitted work in a temporary worktree is not durable** | A Codex session's reviewed-and-passed `.github/workflows/ci.yml` was lost when its worktree was deleted before any commit. Review passed; the commit gate never ran | 1.8 | **Mitigated by process change** | Commit reviewed work to its branch **before** removing any worktree. Treat a `prunable` worktree as a signal that uncommitted work may already be gone |
 
 Documented risks carried from the architecture (context for a future agent, not defects):
 
