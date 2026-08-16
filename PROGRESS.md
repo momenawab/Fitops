@@ -588,7 +588,100 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 2.4 is complete and merged; Story 2.5 has not started.
+### Story 2.5 — Email Verification  (Epic 02 — Authentication & Identity)
+
+**Status:** IN PROGRESS — two workers dispatched in parallel on 2026-08-16. **Not complete.**
+
+**Blueprint §7 Story 2.5:** implement `POST /auth/email/verify` and `POST /auth/email/resend`.
+Requirements: *Expiring token · Secure token storage · Rate limiting · Generic responses where
+necessary.*
+
+---
+
+#### 🔒 BINDING STORY 2.5 DECISIONS (user, 2026-08-16)
+
+**Why these are recorded verbatim:** the Story 2.5 preflight found that the authoritative documents
+specify **no numeric rate limits, no token expiry, no single-use requirement, and no response
+bodies or status codes** for either endpoint. Rather than invent them, they were reported as
+blockers and resolved explicitly. **Future agents must not rediscover, reinterpret, or "improve"
+these values — they are decisions, not derivations.**
+
+**1. Rate limiting — scoped throttles only**
+
+| Endpoint | Rate |
+|---|---|
+| `POST /api/v1/auth/email/resend` | **3 requests/minute** |
+| `POST /api/v1/auth/email/verify` | **10 requests/minute** |
+
+**Do NOT introduce global throttling.** Scoped, per-endpoint throttles only. API §22 mandates rate
+limiting for *email verification* but specifies no numeric rate anywhere in the API Specification or
+Blueprint — these numbers are this Story's decision. Note Blueprint **Story 20.3 — Authentication
+Hardening** owns *OTP* and *login* rate limits and does **not** list email verification, so there is
+no ownership conflict.
+
+**2. Verification token**
+
+- Keep the **stateless `default_token_generator`** approach. **NO token model.** None exists in the
+  approved architecture and none may be added.
+- **Single-use**, achieved by incorporating `email_verified_at` into the token hash semantics.
+  *Verified empirically during preflight:* Django's stock hash is
+  `user.pk + user.password + last_login + timestamp + email`, and setting `email_verified_at`
+  changes **none** of those — so the stock token stays valid after use. Single use therefore
+  requires a custom generator, still entirely stateless.
+- **Expiry: 10 minutes.** Django's default is `PASSWORD_RESET_TIMEOUT` = 259200 s (3 days), which
+  was never set in this project. ⚠️ The 10-minute window must be applied **without** changing the
+  global `PASSWORD_RESET_TIMEOUT`, which would also shorten password-reset tokens in Story 2.10.
+- ⚠️ **Story 2.4's registration email must issue tokens from the same generator**, otherwise tokens
+  issued at registration will not verify.
+
+**3. `POST /auth/email/verify`**
+
+- Public / `AllowAny`. Success **HTTP 200** with `{"message": "Email verified successfully."}`.
+- Sets `User.email_verified_at`.
+- Invalid **or** expired token → **HTTP 400** using the existing `VALIDATION_ERROR` envelope with a
+  **generic** message. **Do not reveal which of the two occurred.**
+
+**4. `POST /auth/email/resend`**
+
+- Public / `AllowAny`. **HTTP 200** always.
+- Returns the **same generic success response** whether the email exists, is already verified, or
+  does not exist. **Must not allow account enumeration** (API §188 states this explicitly for this
+  endpoint, unlike registration where only CLAUDE.md §19 did).
+- Sends the email only when appropriate, via `transaction.on_commit()`.
+- Must not expose account existence or verification state.
+
+**5. Error handling**
+
+Reuse the Story 2.4 error envelope. **Do not invent new error codes** — the documented
+`VALIDATION_ERROR` is sufficient. (`INVALID_OTP` / `OTP_EXPIRED` exist in the closed list but name
+the *Client OTP login* flow, not coach email verification.)
+
+---
+
+#### Preflight findings that shaped these decisions
+
+- **No model or migration is required.** `User.email_verified_at` already exists from Story 2.1 as a
+  nullable timestamp; there is no boolean flag and none may be added.
+- **The "around 10 minutes / one-time use" text in DB & Auth Architecture belongs to the OTP
+  Security section** (Client OTP login), **not** coach email verification. It was checked in context
+  specifically to avoid misapplying it as a documented requirement.
+- **No throttle configuration existed anywhere in the codebase** before this Story.
+- The API §2 error envelope from Story 2.4 is live, so new endpoints inherit it automatically.
+
+---
+
+#### Task breakdown — 2 streams, OpenCode deliberately idle
+
+| ID | Task | Complexity | Worker | Allowed files |
+|---|---|---|---|---|
+| A | Both endpoints: serializers, views, URLs, scoped throttles, custom token generator | Very hard | **Codex** | `accounts/{serializers,views,urls}.py`, `config/settings/base.py` |
+| B | Spec-driven API tests | Medium | **AGY** `gemini-3.7-flash-high` | `tests/test_email_verification_api.py` |
+
+**OpenCode stays idle.** Unlike Stories 2.2 and 2.3, preflight found **no** documentation defect to
+fix — the API Specification and DB & Auth Architecture agree, and the OTP-vs-verification wording
+was verified to be correct in context rather than contradictory. Manufacturing a third stream would
+be artificial. A must own `settings/base.py` for throttle configuration, so no other stream may
+touch it.
 
 ---
 
