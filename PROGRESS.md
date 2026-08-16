@@ -31,8 +31,8 @@
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
 | **Current Epic** | Epic 02 — Authentication & Identity |
-| **Current Story** | Story 2.5 — Email Verification — **COMPLETE and merged** (2026-08-17) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Stories 2.1–2.5 complete**; Story 2.6 NOT started |
+| **Current Story** | Story 2.6 — Coach Login — **COMPLETE and merged** (2026-08-17) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Stories 2.1–2.6 complete**; Story 2.7 NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-15 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -588,7 +588,124 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 2.5 is complete and merged; Story 2.6 has not started.
+**No Story currently in progress.** Story 2.6 is complete and merged; Story 2.7 has not started.
+
+---
+
+## Completed — Story 2.6
+
+### Story 2.6 — Coach Login  (Epic 02 — Authentication & Identity)
+
+**Status:** ✅ **COMPLETE** — **PR #7 merged as `de9ae5de7e6febee11668c347bc5f439a0d80151`** on
+2026-08-17. Verified: `origin/main` equals that SHA from both git and the GitHub API, and the merge
+introduced exactly the nine Story 2.6 files.
+
+**Contract delivered (API Specification §4):**
+
+    POST /api/v1/auth/login        Public
+    2FA off   : 200 {"authenticated": true}                        + Django session
+    2FA on    : 200 {"authenticated": false, "requires_2fa": true}   NO session
+    bad creds : 401 INVALID_CREDENTIALS
+    unverified: 403 EMAIL_NOT_VERIFIED
+
+**`CoachSecurity` created here** with exactly the six fields from Database & Auth Architecture §3
+(`id`, `user_id`, `two_factor_enabled`, `two_factor_secret`, `created_at`, `updated_at`), UUID
+primary key, OneToOne + CASCADE, `two_factor_enabled` default `False`. `two_factor_secret` is
+sensitive and is **never serialized**. Migration `0004_coachsecurity`.
+
+---
+
+#### 🔒 Two ordering rules that carry this Story's security weight
+
+**1. Credentials are checked BEFORE email verification.** A wrong password on an *unverified*
+account returns **401 `INVALID_CREDENTIALS`**, not 403. Checking verification first would turn
+`EMAIL_NOT_VERIFIED` into an **account-existence oracle** and defeat anti-enumeration entirely.
+
+**2. `login()` is called ONLY on the fully-authenticated path.** The `requires_2fa` branch returns
+before it, so **no session can exist for a user who has not completed 2FA**. Creating the session
+earlier would let anyone **bypass 2FA** while the response still said `"authenticated": false`.
+
+Both are covered by named tests and both mutations are caught. **Do not reorder these without
+re-reading this section.**
+
+---
+
+#### Review finding — `AuthenticationFailed` cannot return 401 in this project
+
+Invalid credentials originally raised DRF's `exceptions.AuthenticationFailed`, which returned
+**403**, not the mandated 401. Cause, verified in the installed DRF source rather than assumed:
+
+    # WWW-Authenticate header for 401 responses, else coerce to 403
+    auth_header = self.get_authenticate_header(self.request)
+    if auth_header: ...  else: exc.status_code = HTTP_403_FORBIDDEN
+
+    SessionAuthentication.authenticate_header -> None
+
+`SessionAuthentication` is the only auth class, so `AuthenticationFailed` is **structurally
+incapable** of producing 401 here. Fixed by bounded rework to an `APIException` subclass with
+`status_code = 401` and `default_code = "INVALID_CREDENTIALS"`, mirroring the `EmailNotVerified`
+pattern; `APIException` is not subject to that coercion and the uppercase `default_code` is already
+in the documented closed list.
+
+⚠️ **Carry-in for every future endpoint needing 401:** use an `APIException` subclass, **not**
+`AuthenticationFailed`.
+
+---
+
+#### Architecture guards correctly fired
+
+The Story 2.4 and 2.5 guards asserted the `accounts` app contained exactly
+`{User, CoachProfile, ClientProfile}`. Adding the approved `CoachSecurity` model made them **fail —
+which is exactly what they exist for**. Both were updated to include it; no other assertion in those
+files was touched. **Adding any future model will trip them again, by design.**
+
+---
+
+#### Verification and acceptance evidence
+
+**Master-run, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / dev / prod | **0** / **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** |
+| `migrate` (real PostgreSQL) | **0** — `accounts.0004_coachsecurity` applied |
+| Focused Story 2.6 tests | **0** — 31 pass |
+| Full suite | **0** — **138 tests** pass |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **0** — `next-env.d.ts` unchanged |
+
+**Mutation-checked — all four guards proven non-vacuous:**
+
+| Mutation | Result |
+|---|---|
+| Revert to `AuthenticationFailed` (breaks 401) | **7 failures** |
+| Check verification *before* authentication (creates the oracle) | **1 failure** |
+| Call `login()` before the `requires_2fa` return (2FA bypass) | **2 failures** |
+| Throttle widened to 1000/minute | **1 failure** |
+
+All mutated files restored **byte-identical** (`views.py` = `67bedc4b…`).
+
+**Master fixes disclosed** (not folded silently into worker output): four ruff `E501` wraps, and
+bounded removal of two over-specified payloads asserting 400 for an *integer* password — DRF's
+`CharField` legitimately coerces `int`/`float` to `str`, so such a payload validates and then fails
+authentication. The `None` cases, which genuinely fail validation, were kept.
+
+**GitHub CI — accepted run
+[31975019219](https://github.com/momenawab/Fitops/actions/runs/31975019219): success.** All 9 steps,
+none skipped. Tested merge SHA `4b703a3 = Merge b92e7e0 into 24f8ae9`.
+
+**PR scope was clean from the start** — 9 code-only files, no `PROGRESS.md`. The tracking-commit
+slip from Stories 2.4 and 2.5 did not recur, because the tracking commit was pushed when made.
+
+**Merge** used an explicit `--match-head-commit b92e7e0…` guard.
+
+Commits: `2fdd514` (endpoint + model) · `b92e7e0` (tests).
+
+**Scope note:** Story 2.7 owns all 2FA endpoints and Story 2.9 owns `/auth/me` and `/auth/logout`;
+neither was implemented or stubbed. Sessions use Django's framework — no `UserSession`, no
+`token_hash`, no JWT. Throttling is scoped to login at 10/minute; no global throttling was
+introduced and no other endpoint gained one.
 
 ---
 
@@ -1704,54 +1821,53 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 | Field | Value |
 |---|---|
 | **Epic** | Epic 02 — Authentication & Identity |
-| **Story ID** | **Story 2.6** |
-| **Story title** | Coach Login |
+| **Story ID** | **Story 2.7** |
+| **Story title** | TOTP 2FA |
 
-**Do NOT start Story 2.6 automatically — user approval required. No implementation has begun.**
+**Do NOT start Story 2.7 automatically — user approval required. No implementation has begun.**
 
-**Blueprint §7 Story 2.6, verbatim:**
+**Blueprint §7 Story 2.7, verbatim:**
 
 ```
-## Story 2.6 — Coach Login
+## Story 2.7 — TOTP 2FA
 
 Implement:
 
-POST /auth/login
+POST /auth/2fa/setup
+POST /auth/2fa/confirm
+POST /auth/2fa/verify
+POST /auth/2fa/disable
 
-Flow:
+Requirements:
 
-Email + Password
-       ↓
-Credentials Valid
-       ↓
-2FA Enabled?
-   ┌───┴───┐
-  YES      NO
-   ↓        ↓
-2FA      Session
-   ↓
-Session
+- TOTP secret protection
+- Setup confirmation
+- Verification attempt limits
+- Secure recovery strategy
 ```
 
-**Notes before starting Story 2.6 — carried from earlier Stories:**
+**Notes before starting Story 2.7 — carried from Story 2.6:**
 
-1. **Rate limiting IS mandated here.** API §22 lists *Login* explicitly, and Blueprint Story 20.3
-   (Authentication Hardening) also names login rate limits. Confirm ownership before deciding scope,
-   and reuse the **scoped-throttle** pattern established in Story 2.5 — there is still deliberately
-   **no** global throttling.
-2. **Sessions come from Django's session framework.** There is **no** `UserSession` model, no
-   `token_hash`, and no JWT. Login creates a Django session; `POST /auth/logout` terminates it.
-   Per-session listing and revocation were removed from the MVP.
-3. **2FA is TOTP only** and its state lives on `CoachSecurity`, a model that **does not exist yet**.
-   Check whether Story 2.6 needs it, or whether the 2FA branch belongs to a later Story — the
-   Blueprint flow shows the branch but the model may not be in scope here. **Resolve this in
-   preflight; do not assume.**
-4. **`EMAIL_NOT_VERIFIED` and `TWO_FACTOR_REQUIRED` are documented error codes.** Read API §4 for
-   the exact login contract before deciding which apply. Invent no code outside the closed list.
-5. **Anti-enumeration:** confirm from API §4 what login must return for a wrong password versus an
-   unknown email. `INVALID_CREDENTIALS` exists in the closed list.
-6. The API §2 error envelope and the scoped-throttle pattern are both live and inherited.
-7. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 2.6.
+1. **`CoachSecurity` already exists** (Story 2.6) with `two_factor_enabled` and
+   `two_factor_secret`. **No new model should be needed** — verify that in preflight rather than
+   assuming, and add none without an explicit decision.
+2. **`POST /auth/2fa/verify` completes the login begun by `/auth/login`.** Story 2.6 deliberately
+   does **not** create a session when `requires_2fa` is true, so 2.7 must create it on successful
+   verification. Read Story 2.6's login view before designing this — the two halves must fit.
+3. ⚠️ **A 401 needs an `APIException` subclass, not `AuthenticationFailed`.** DRF coerces 401 → 403
+   whenever no authenticator supplies a `WWW-Authenticate` header, and `SessionAuthentication`
+   supplies none. This cost a bounded rework in Story 2.6.
+4. **`two_factor_secret` is sensitive.** It may be returned **only** by `/auth/2fa/setup`, which
+   exists to deliver it. It must never appear in any other response, log, or error.
+5. **"Verification attempt limits" and "secure recovery strategy" are stated but not quantified.**
+   Expect these to be **blocking decisions** — no attempt count, lockout duration or recovery
+   mechanism is specified anywhere. Do not invent them.
+6. **TOTP needs a library** (e.g. `pyotp`), which is **not** in the locked stack and **not**
+   installed. Adding a dependency requires explicit approval — surface it in preflight.
+7. `/auth/2fa/setup`, `/confirm` and `/disable` are **Coach-only** per API §4; `/verify` is reached
+   mid-login. Resolve each endpoint's permission class in preflight.
+8. Reuse the scoped-throttle pattern and the API §2 error envelope; both are live.
+9. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 2.7.
 
 
 **Carry-ins still live:**

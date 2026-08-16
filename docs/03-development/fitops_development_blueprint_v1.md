@@ -586,7 +586,7 @@ Requirements:
 
 ---
 
-## Story 2.6 — Coach Login
+## Story 2.6 — Coach Login — ✅ COMPLETE (2026-08-17)
 
 Implement:
 
