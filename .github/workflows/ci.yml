@@ -1,0 +1,88 @@
+name: CI
+
+# Story 1.8 — CI Pipeline.
+# Runs the Story 1.7 quality baseline plus a production build on every pull
+# request targeting main.
+#
+# `pull_request` (never `pull_request_target`) is deliberate: pull_request runs
+# without exposing repository secrets to code from a fork.
+#
+# No `github.event.*` value is interpolated anywhere in this workflow, so there
+# is no script-injection surface from PR titles, branch names or commit
+# messages. Keep it that way: if a future step ever needs such a value, pass it
+# through `env:` and reference it as a shell variable, never inline in `run:`.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Quality gates and build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: fitops
+          POSTGRES_USER: fitops
+          POSTGRES_PASSWORD: fitops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fitops -d fitops"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Must match backend/config/settings/base.py DATABASES.
+      POSTGRES_DB: fitops
+      POSTGRES_USER: fitops
+      POSTGRES_PASSWORD: fitops
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      # CI-only throwaway value. Never a production credential.
+      DJANGO_SECRET_KEY: django-insecure-ci-only-not-a-real-secret
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && pip install -r backend/requirements-dev.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Must run before checks.sh, which invokes the frontend gates.
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # The seven-gate Story 1.7 baseline: backend ruff check, ruff format
+      # --check and the Django test suite, plus frontend lint, typecheck,
+      # vitest and prettier. Invoking the script rather than restating the
+      # gates keeps one definition of "the checks" for local runs and CI, and
+      # inherits its guard that a zero-test Django run is a FAILURE.
+      - name: Run quality gates
+        run: ./infrastructure/scripts/checks.sh
+
+      # Build validation is a separate Story 1.8 task and is not one of the
+      # seven baseline gates.
+      - name: Validate production build
+        working-directory: frontend
+        run: npm run build
