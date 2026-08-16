@@ -37,3 +37,10 @@ class EmailVerificationResendSerializer(serializers.Serializer):
     """Validate an email address for verification-email resend requests."""
 
     email = serializers.EmailField()
+
+
+class CoachLoginSerializer(serializers.Serializer):
+    """Validate coach login credentials."""
+
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
