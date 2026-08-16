@@ -2,6 +2,7 @@
 
 import uuid
 
+from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
 from django.db import models
 
@@ -37,3 +38,23 @@ class User(AbstractBaseUser):
 
     def __str__(self):
         return self.email
+
+
+class CoachProfile(models.Model):
+    """Public and personal profile information for a Coach."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        related_name="coach_profile",
+        on_delete=models.CASCADE,
+    )
+    bio = models.TextField(blank=True)
+    profile_image = models.FileField(upload_to="coach_profiles/", blank=True)
+    website_url = models.URLField(blank=True)
+    instagram_url = models.URLField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return str(self.user)
