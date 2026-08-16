@@ -30,8 +30,9 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
-| **Current Story** | Story 1.8 — CI Pipeline — **COMPLETE and accepted** (2026-08-16) |
-| **Overall status** | ✅ **EPIC 01 — Project Foundation COMPLETE — 8 of 8 Stories.** Epic 02 not started |
+| **Current Epic** | Epic 02 — Authentication & Identity |
+| **Current Story** | Story 2.1 — Custom User Model — **COMPLETE and accepted** (2026-08-16) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Story 2.1 complete**; Story 2.2 not started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-15 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -587,7 +588,155 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Epic 01 is complete; Epic 02 has not been started.
+**No Story currently in progress.** Story 2.1 is complete and accepted; Story 2.2 has not started.
+
+---
+
+## Completed — Story 2.1
+
+### Story 2.1 — Custom User Model  (Epic 02 — Authentication & Identity)
+
+**Status:** ✅ **COMPLETE** — accepted by the user 2026-08-16. **PR #2 merged** as `49270f4`.
+
+**Acceptance criteria (Blueprint §7 Story 2.1) — all three proven:**
+
+| AC | Evidence |
+|---|---|
+| Email is unique | Enforced at the **database** level; duplicate insert raises `IntegrityError` |
+| User model is used as Django `AUTH_USER_MODEL` | `AUTH_USER_MODEL = "accounts.User"`; `get_user_model()` resolves to `accounts.User`; table `accounts_user` |
+| Passwords are securely hashed | `create_user` uses `set_password`; stored value ≠ raw and `check_password` succeeds |
+
+**Implemented** (`ded1b32` model, `772431e` tests):
+
+- `backend/apps/accounts/models.py` — `User(AbstractBaseUser)`
+- `backend/apps/accounts/managers.py` — `UserManager.create_user`
+- `backend/apps/accounts/migrations/0001_initial.py` — generated, not hand-written
+- `backend/config/settings/base.py` — `AUTH_USER_MODEL = "accounts.User"` (only change)
+- `backend/tests/test_user_model.py` — 16 tests
+
+Fields match **Database & Auth Architecture §2** and the **ERD** exactly:
+`id · email · first_name · last_name · phone · is_active · email_verified_at · platform_role ·
+created_at · updated_at`, plus `password` and `last_login` from `AbstractBaseUser`.
+
+**Three interpretations, approved before implementation:**
+
+1. **`id` is a UUID primary key.** The documents show a single `id PK` with no separate uuid
+   column; Blueprint Story 2.1 lists "UUID"; API Spec §25.13 requires UUIDs for externally exposed
+   identifiers.
+2. **The documented `password_hash` is Django's `password` field**, provided by `AbstractBaseUser`,
+   whose name Django's auth machinery requires. No field literally named `password_hash` exists.
+3. **`email_verified_at` is a nullable timestamp**, not a boolean.
+
+---
+
+#### 🔒 ARCHITECTURE DECISION — AbstractBaseUser WITHOUT PermissionsMixin (binding)
+
+**The `User` model uses `AbstractBaseUser` only. It deliberately does NOT use `PermissionsMixin`,
+and MUST NOT gain `is_staff`, `is_superuser`, `groups`, or `user_permissions`.**
+
+Rationale (user-approved, 2026-08-16):
+
+- The authoritative field list in DB & Auth Architecture §2 and the ERD contains none of them.
+- Platform authority is represented **only** by `platform_role = ADMIN` (CLAUDE.md §12).
+- Adding `PermissionsMixin` would introduce four fields outside the approved ERD.
+- `django.contrib.admin` being in `INSTALLED_APPS` is an accepted Story 1.2 artifact. Story 2.1
+  deliberately did **not** expand scope to make Django admin functional, and introduced **no**
+  replacement permission system.
+
+**Consequences a future agent must respect:**
+
+- There is deliberately **no `create_superuser`** — without an `is_superuser` field the concept does
+  not exist. A Platform Admin is simply a `User` with `platform_role = ADMIN`.
+- `manage.py createsuperuser` and Django admin login are therefore not usable. **This is intended.**
+  Do not "fix" it by adding permission fields; if a future Story genuinely needs Django admin,
+  raise it as an architecture decision.
+- `backend/tests/test_user_model.py` contains a dedicated guard asserting all four fields are
+  absent, plus a **set-equality** assertion on concrete fields so an invented extra field fails as
+  loudly as a missing one. Both were mutation-proven to fire.
+
+---
+
+#### Execution — first Story under the parallel orchestration model
+
+| Task | Worker | Model | Scope discipline |
+|---|---|---|---|
+| A — model, manager, migration, `AUTH_USER_MODEL` | **Codex** | high effort | exactly the 4 permitted files |
+| B — 16 model tests | **AGY** | `gemini-3.7-flash-high` | exactly 1 permitted file, **zero permission denials** |
+
+A and B ran **concurrently** in isolated worktrees with **no shared writable file**. B was written
+from the same authoritative specification as A — not from A's output — so the tests are an
+independent check rather than a description of the implementation. AGY finished first; its diff was
+reviewed and its temporary write permission revoked while Codex was still running.
+
+**OpenCode was deliberately left idle.** Story 2.1 is a single tightly-coupled model and supports
+genuine 2-way parallelism only; manufacturing a third stream would have been artificial staging.
+GLM-5.3 was verified available (`zai-coding-plan/glm-5.3`, probe exit 0) and is ready for Stories
+that are genuinely separable.
+
+**Verification by Master, real exit codes:** three `manage.py check` runs 0 · 19 tests pass
+(16 new + 3 smoke) · `checks.sh` exit 0, all 7 gates · model introspection confirms UUID pk, email
+unique, exact field set, `FORBIDDEN PRESENT: []`, no `create_superuser`. **Mutation-checked:**
+injecting an `is_staff` field made the guard and the field-set assertion fail; the model was then
+restored byte-identical (blob `78d02200fa14b923748295bf7f54ce58428a4131`).
+
+**Remote acceptance:** PR #2 → run
+[31954812214](https://github.com/momenawab/Fitops/actions/runs/31954812214) **success**, all 9
+steps, none skipped, `19 test(s) collected`. Merged as `49270f4`. The merged tree is **byte-identical**
+(`4433b784…`) to the tree CI validated, because `0227246` is an ancestor of `772431e` — verified,
+not assumed.
+
+---
+
+#### 🔧 Local development database repaired (2026-08-16)
+
+**Not a Story 2.1 code defect** — a local development-environment consequence of introducing a
+custom `AUTH_USER_MODEL` after an initial `migrate` had already run.
+
+**Symptom:**
+
+```
+django.db.migrations.exceptions.InconsistentMigrationHistory:
+Migration admin.0001_initial is applied before its dependency
+accounts.0001_initial on database 'default'
+```
+
+**Cause:** the local `fitops` database was migrated in Story 1.4 under Django's default
+`auth.User`. `django.contrib.admin`'s initial migration depends on the swappable user model, so
+swapping `AUTH_USER_MODEL` afterwards made the recorded history inconsistent. It blocked
+`migrate` / `makemigrations` locally but **never affected tests or CI**, because both build a
+**fresh** database — which is exactly how the migration was proven to apply cleanly.
+
+**Repair (user-authorised, local `fitops` database only):**
+
+1. Pre-drop inspection proved it was safe: 10 tables, **all** Django built-ins, **zero** business
+   tables, `auth_user = 0` rows, `django_session = 0`, `django_admin_log = 0`. No business data
+   existed because Story 2.1 created the project's first model.
+2. `DROP DATABASE fitops` → recreated `OWNER fitops ENCODING 'UTF8'` using the existing approved role.
+3. `manage.py migrate` from clean state — `accounts.0001_initial` now applies **first**, before
+   `contenttypes` and `admin`.
+
+`couch`, `erp`, `postgres`, `template0`, `template1` and all roles were verified **untouched** both
+before and after. No migration file, application file, architecture document, or project workaround
+was changed.
+
+**Post-repair verification, real exit codes:**
+
+| Check | Exit |
+|---|---|
+| `migrate` | **0** |
+| `migrate --check` | **0** |
+| `makemigrations --check --dry-run` (repo-wide) | **0** — no inconsistent history remains |
+| `manage.py check` default / dev / prod | **0** / **0** / **0** |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+
+Live round-trip against the repaired database: `accounts_user` table present, `auth_user` table
+correctly **absent**, migration order `accounts → contenttypes → admin`, a created user has a UUID
+id, a hashed password satisfying `check_password`, and defaults `is_active=True`,
+`platform_role='NONE'`, `email_verified_at=None`. The verification row was deleted afterwards.
+
+**Lesson for future agents:** `makemigrations <app> --check` scoped to a single app can pass while
+the **repo-wide** `makemigrations --check` fails on history inconsistency. Always run the repo-wide
+form.
 
 ---
 
@@ -1048,32 +1197,46 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 
 ## Next
 
-> ⚠️ **There is no Story 1.9.** Epic 01 ends at Story 1.8. Verified against
-> `docs/03-development/fitops_development_blueprint_v1.md`: `# 6. EPIC 01 — Project Foundation`
-> contains Stories **1.1 – 1.8** only, and is immediately followed by
-> `# 7. EPIC 02 — Authentication & Identity` beginning at `## Story 2.1 — Custom User Model`.
-> **Epic 01 is COMPLETE (8 of 8).** The next Story is **2.1**, not 1.9.
-
 | Field | Value |
 |---|---|
 | **Epic** | Epic 02 — Authentication & Identity |
-| **Story ID** | **Story 2.1** |
-| **Story title** | Custom User Model |
+| **Story ID** | **Story 2.2** |
+| **Story title** | Coach Profile |
 
-**Do NOT start Epic 02 automatically — user approval required.**
+**Do NOT start Story 2.2 automatically — user approval required.**
 
-**Notes before starting Story 2.1:**
+**Blueprint §7 Story 2.2, verbatim and complete:**
 
-1. Epic 02 is the **first Epic that creates real models and migrations**. Re-read the Database &
-   Auth Architecture and the ERD **before writing any code** — do not add fields from memory.
-2. The locked identity model: `User` is **global** with `platform_role ∈ {NONE, ADMIN}`. Coach and
-   Client roles come from **`Membership`**, never from `User`. There is **no** `UserSession` model
-   and **no** `token_hash` architecture — Django's session framework only.
-3. `ClientProfile` is global identity and **must not** carry `workspace_id`.
-4. CI now runs on every PR to `main`. Expect the seven gates plus the production build to gate all
-   Epic 02 work, and expect new models to require tests.
-5. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Epic 02; B24–B27 belong to
-   Epic 22. Stop and ask if implementation reaches one.
+```
+## Story 2.2 — Coach Profile
+
+Create:
+
+    CoachProfile
+
+Fields include approved public/profile data.
+```
+
+**Notes before starting Story 2.2:**
+
+1. The Blueprint entry is deliberately thin — *"Fields include approved public/profile data."* The
+   **authoritative** field list is in **Database & Auth Architecture** and the **ERD**, which show
+   `CoachProfile` with `id`, `user_id FK`, `bio`, `image`, `website`, `instagram`. **Read both
+   documents before writing any code and do not add fields from memory.**
+2. `CoachProfile` is **global identity**, linked to `User`. Workspace branding lives on `Workspace`,
+   not here — so a Coach can operate more than one Workspace later.
+3. Story 2.1's decision stands: `User` uses `AbstractBaseUser` **without** `PermissionsMixin`.
+   Reference the user model via `settings.AUTH_USER_MODEL` / `get_user_model()`, never by importing
+   the class directly into a migration.
+4. `CoachProfile` carries **no** `workspace_id` and **no** role field. Roles come from `Membership`.
+5. Media (`image`) must go through the storage abstraction; PostgreSQL stores metadata only, and raw
+   storage paths are never exposed. Do **not** build upload endpoints in this Story — the model only.
+6. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 2.2.
+
+**Parallelism note:** Story 2.2 (`CoachProfile`) and Story 2.3 (`ClientProfile`) are genuinely
+independent models in different files, so they parallelise naturally once both are approved — that
+is where the 3-worker model will actually pay off. Story 2.1 supported only 2-way parallelism and
+OpenCode was correctly left idle rather than given manufactured work.
 
 **Carry-ins still live:**
 
