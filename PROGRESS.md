@@ -31,8 +31,8 @@
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
 | **Current Epic** | Epic 02 — Authentication & Identity |
-| **Current Story** | Story 2.3 — Client Profile — **IN PROGRESS** (3 workers dispatched in parallel) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Stories 2.1 and 2.2 complete**; 2.3 in progress |
+| **Current Story** | Story 2.3 — Client Profile — **COMPLETE and merged** (2026-08-16) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Stories 2.1, 2.2 and 2.3 complete**; Story 2.4 NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-15 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -588,9 +588,17 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
+**No Story currently in progress.** Story 2.3 is complete and merged; Story 2.4 has not started.
+
+---
+
+## Completed — Story 2.3
+
 ### Story 2.3 — Client Profile  (Epic 02 — Authentication & Identity)
 
-**Status:** IN PROGRESS — three workers dispatched in parallel on 2026-08-16. **Not complete.**
+**Status:** ✅ **COMPLETE** — **PR #4 merged as `6c2fdcddcf401740030acfcfb3d697b883bb17d3`** on
+2026-08-16. Merge verified: `origin/main` = that SHA, and the merge introduced only the four
+Story 2.3 files.
 
 **Authoritative field set** (Database & Auth Architecture §10; the ERD's textual listing agrees
 field for field) — **11 fields**:
@@ -636,8 +644,109 @@ No file is writable by two workers. B is written from the same authoritative spe
 not from A's output, so it remains an independent check — including a dedicated falsifiable guard
 that no `workspace_id` / `workspace` / `membership` field or column exists.
 
+All three workers stayed exactly in scope, and AGY reported **zero permission denials**. Its
+temporary `write_file(<worktree>)` rule was revoked immediately on completion; the persistent
+allow-list remains `command(git status)` only.
+
+---
+
+#### Approved decisions (user, 2026-08-16) — binding
+
+| Field | Decision | Why |
+|---|---|---|
+| `gender` | **`CharField` with NO `choices` / NO enum** | No gender enum is defined in **any** approved document. Inventing one would introduce enum values outside the approved architecture. A test asserts `choices` is empty, guarding against a later invented enum |
+| `height` | **`DecimalField`** (`numeric(5,2)`) | Fractional values must round-trip. No unit field is documented, so units stay implicit |
+| `current_weight` | **`DecimalField`** (`numeric(5,2)`) | Same; fractional kilograms are normal in coaching |
+| `workspace_id` | **MUST NOT EXIST** | Client identity is global. The Client↔Workspace relationship is expressed **only** through `Membership(role=CLIENT)`. Stated in Blueprint Story 2.3, DB & Auth Architecture §10, the ERD `IMPORTANT` note, and CLAUDE.md §8 |
+
+Also: `user` is a `OneToOneField` to `settings.AUTH_USER_MODEL` (`related_name="client_profile"`,
+`on_delete=CASCADE`); `id` is a UUID primary key; **no validators** were added, because no
+documented rule constrains date ranges, height/weight bounds, or goal/experience values.
+
+---
+
+#### ERD synchronization performed in this Story
+
+The **second** instance of the ERD-vs-DB conflict (the first, `CoachProfile`, was corrected in
+Story 2.2). The ERD's entity diagram showed `DOB` and `weight` and omitted `training_experience`,
+`notes`, `created_at` and `updated_at` — contradicting both DB & Auth Architecture §10 and the
+ERD's *own* textual listing.
+
+Resolved by CLAUDE.md §23 precedence: the specialized document for the subject governs model
+fields, so DB & Auth Architecture wins. Applied changes: `DOB → date_of_birth`,
+`weight → current_weight`, plus four added rows.
+
+Geometrically harder than the first: `training_experience` is 19 characters against a 14-character
+box interior, so the ClientProfile box was widened to a **21-character** interior and its connector
+chain re-aligned. Verified **programmatically**, not by eye — the CoachProfile box keeps its
+original columns (0/15), every ClientProfile border character shares one column pair (20/42), and
+the `┬`→`│`→`▼` chain is aligned at a single column (31).
+
+**Known cosmetic consequence, deliberately accepted:** the arrow now meets the `Membership` box
+three columns right of its centre (31 vs 28), where it was one column off before. This is
+unavoidable — the box width is forced by `training_experience`, `CoachProfile` is fixed, and the
+`Membership` box was deliberately out of scope to move. The arrow still lands inside the box.
+
+The correct textual `ClientProfile` listing, the `workspace_id` IMPORTANT note, and every other
+diagram were left untouched.
+
+---
+
+#### Verification and acceptance evidence
+
+**Master-run local verification, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / dev / prod | **0** / **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** |
+| `migrate` against real PostgreSQL | **0** — `accounts.0003_clientprofile` applied |
+| `migrate --check` | **0** |
+| `manage.py test` | **0** — **57 tests** (22 new + 35 existing) |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+
+**Real database schema confirmed** — exactly **11 columns**, **0** workspace/membership columns,
+`accounts_clientprofile_user_id_key` UNIQUE, and an FK to `accounts_user`. `sqlmigrate` showed the
+UUID primary key and `numeric(5,2)` decimal columns.
+
+**Mutation-checked — the locked rule is genuinely guarded.** Injecting a `workspace_id` field made
+the guard fail on **both** assertions:
+
+```
+AssertionError: 'workspace_id' unexpectedly found in {...}
+  : Forbidden workspace-scoping field 'workspace_id' must not exist on ClientProfile.
+AssertionError: 'workspace_id' unexpectedly found in {...}
+  : Forbidden database column 'workspace_id' must not exist on ClientProfile.
+```
+
+and also broke field-set equality. The model was then restored **byte-identical**
+(blob `bee6434915eb51e191184c0349298b380a1a326e`).
+
+**GitHub CI — accepted run
+[31957183411](https://github.com/momenawab/Fitops/actions/runs/31957183411): success.**
+Event `pull_request` → base `main`, head `d63ede3`. Tested merge
+`95ed586 = Merge d63ede3 into 2ef5be0` — the actual PR merge SHA, confirmed in the checkout log.
+All 9 steps succeeded, **none skipped**, `57 test(s) collected`, `All 7 gates passed`, plus the
+separate production build.
+
+**PR #4** — <https://github.com/momenawab/Fitops/pull/4>, 4 files, +374/−16.
+Commits: `d36ae5b` (model) · `01db341` (tests) · `d63ede3` (ERD sync).
+**Merged as `6c2fdcddcf401740030acfcfb3d697b883bb17d3`.**
+
+---
+
+#### Note for the next Story
+
 **Story 2.4 cannot parallelise with 2.3** — it is `POST /auth/register`, depending on this model
 plus views, serializers and URLs.
+
+**Parallelism, three Stories in — honest assessment.** Codex has been the critical path in all
+three; AGY and OpenCode consistently finish first. The real gains were (1) eliminating
+review-and-wait gaps, since diffs were reviewed and Django checks run while other workers were
+still active, and (2) work that would not otherwise have happened — both ERD defects were found
+during preflight and fixed in-story at zero cost to the critical path. The ceiling for most
+Epic 02 Stories is 2-way, because they are "one model plus tests"; the third slot is only filled
+when a genuine independent defect exists. It is not filled with manufactured work.
 
 ---
 
@@ -1296,43 +1405,54 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 | Field | Value |
 |---|---|
 | **Epic** | Epic 02 — Authentication & Identity |
-| **Story ID** | **Story 2.2** |
-| **Story title** | Coach Profile |
+| **Story ID** | **Story 2.4** |
+| **Story title** | Coach Registration |
 
-**Do NOT start Story 2.2 automatically — user approval required.**
+**Do NOT start Story 2.4 automatically — user approval required. No implementation has begun.**
 
-**Blueprint §7 Story 2.2, verbatim and complete:**
+**Blueprint §7 Story 2.4, verbatim and complete:**
 
 ```
-## Story 2.2 — Coach Profile
+## Story 2.4 — Coach Registration
 
-Create:
+### API
 
-    CoachProfile
+POST /auth/register
 
-Fields include approved public/profile data.
+### Flow
+
+Register
+ ↓
+Create User
+ ↓
+Send verification email
+ ↓
+Verify
 ```
 
-**Notes before starting Story 2.2:**
+**Notes before starting Story 2.4 — this Story is a significant shift:**
 
-1. The Blueprint entry is deliberately thin — *"Fields include approved public/profile data."* The
-   **authoritative** field list is in **Database & Auth Architecture** and the **ERD**, which show
-   `CoachProfile` with `id`, `user_id FK`, `bio`, `image`, `website`, `instagram`. **Read both
-   documents before writing any code and do not add fields from memory.**
-2. `CoachProfile` is **global identity**, linked to `User`. Workspace branding lives on `Workspace`,
-   not here — so a Coach can operate more than one Workspace later.
-3. Story 2.1's decision stands: `User` uses `AbstractBaseUser` **without** `PermissionsMixin`.
-   Reference the user model via `settings.AUTH_USER_MODEL` / `get_user_model()`, never by importing
-   the class directly into a migration.
-4. `CoachProfile` carries **no** `workspace_id` and **no** role field. Roles come from `Membership`.
-5. Media (`image`) must go through the storage abstraction; PostgreSQL stores metadata only, and raw
-   storage paths are never exposed. Do **not** build upload endpoints in this Story — the model only.
-6. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 2.2.
+1. **It is the first Story with an API surface.** Stories 2.1–2.3 were models only. 2.4 introduces
+   the first endpoint, and therefore the first serializer, view and URL wiring. Read **API
+   Specification §4 (auth)** for the exact contract — request/response shape, status codes and the
+   standard error envelope — and implement exactly that. Invent no endpoint.
+2. **Anti-enumeration is mandatory.** Registration and resend-verification must always return a
+   generic success response, so an attacker cannot discover which emails exist (CLAUDE.md §19).
+3. **Rate limiting is mandatory** on registration (API §22).
+4. **Email goes through Django's email backend only** — never a provider SDK. The SMTP provider is
+   deliberately unselected in `docs/MISSING_DECISIONS.md` and blocks nothing: dev settings use the
+   console backend.
+5. The verification token itself belongs to **Story 2.5** (`POST /auth/email/verify` / `resend`,
+   with expiring, securely-stored tokens). Keep 2.4 to registration plus triggering the email; do
+   not build the verification endpoint here.
+6. `User` uses `AbstractBaseUser` **without** `PermissionsMixin`, and there is deliberately **no**
+   `create_superuser`. Create users through `UserManager.create_user`.
+7. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 2.4.
 
-**Parallelism note:** Story 2.2 (`CoachProfile`) and Story 2.3 (`ClientProfile`) are genuinely
-independent models in different files, so they parallelise naturally once both are approved — that
-is where the 3-worker model will actually pay off. Story 2.1 supported only 2-way parallelism and
-OpenCode was correctly left idle rather than given manufactured work.
+**Parallelism outlook for 2.4.** Unlike 2.1–2.3, this Story has genuinely separable layers —
+serializer/validation, view/URL wiring, and tests — but they are **coupled through the API
+contract** and several share files. Expect the honest split to be roughly 2-way again, with a
+third stream only if a real independent artifact exists. Do not manufacture one.
 
 **Carry-ins still live:**
 

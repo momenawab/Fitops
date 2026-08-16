@@ -530,7 +530,7 @@ Fields include approved public/profile data.
 
 ---
 
-## Story 2.3 — Client Profile
+## Story 2.3 — Client Profile — ✅ COMPLETE (2026-08-16)
 
 Create:
 
