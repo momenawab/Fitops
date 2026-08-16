@@ -691,9 +691,96 @@ Design notes:
 | `cd frontend && npm run build` | **exit 0** — 4 routes prerendered |
 | `frontend/next-env.d.ts` after build | **UNCHANGED** — blob `ce4e94a6b10f160ee021fe18939af160d2927dcf` before and after |
 
-**Remaining to finish Story 1.8 (NOT yet done, requires explicit approval):** push a branch, open a
-PR against `main`, and observe a **real** GitHub Actions pull-request run pass. Until that run
-passes, the DoD is unmet and the Story stays IN PROGRESS.
+---
+
+#### Remote phase — history split, push, and PR #1
+
+The single commit `6f14f54` (workflow + `PROGRESS.md`) was split so the Story 1.8 PR could contain
+exactly one file. Verified no-loss: the post-split tree hash is **identical** to the pre-split tree
+(`c783902bac7481d78c21777ecfcaf486139c2348`), and `git diff 6f14f54..HEAD` reported **0** files.
+
+| Ref | SHA | Contents |
+|---|---|---|
+| `origin/main` before | `207bd01` | — |
+| docs commit | `2cb7539` | `PROGRESS.md` only |
+| CI commit | `4c8a6f8` | `.github/workflows/ci.yml` only |
+
+`2cb7539` was fast-forwarded onto `origin/main` (never force-pushed). Branch
+`codex/story-1.8-ci` was published at `4c8a6f8`, and **PR #1** opened against `main`:
+<https://github.com/momenawab/Fitops/pull/1> — GitHub reports `changed_files=1, +88, -0`,
+exactly `.github/workflows/ci.yml`.
+
+**The `ci.yml` commit deliberately lives only on `codex/story-1.8-ci`, never on `main`.** Local
+`main` is kept aligned with `origin/main` so the workflow reaches `main` only by merging PR #1.
+
+---
+
+#### ⚠️ PR #1 exposed a real defect — the frontend lockfile was not valid on Linux
+
+**This is exactly what CI is for.** The first pull-request run
+([31951583598](https://github.com/momenawab/Fitops/actions/runs/31951583598)) failed at step 7,
+`npm ci`, before any gate executed:
+
+```
+npm error code EUSAGE
+npm error `npm ci` can only install packages when your package.json and
+          package-lock.json are in sync.
+npm error Missing: @emnapi/runtime@1.11.3 from lock file
+npm error Missing: @emnapi/core@1.11.3 from lock file
+```
+
+**The workflow was correct.** It detected a genuine repository defect. No workflow change was made
+to make CI green, and `npm ci` was deliberately **not** downgraded to `npm install` — reproducible
+installs are required in both CI and the Docker image.
+
+**Root cause — attributed to the Story 1.7 frontend dependency baseline, not the Story 1.8 CI
+workflow.** Story 1.7 added the frontend test/formatting dependencies by running `npm install` on
+**macOS**, regenerating `package-lock.json` there. That lockfile carried `@emnapi/*` only as nested
+optional dependencies under the `wasm32-wasi` packages, so a **Linux** install tree required
+top-level `@emnapi/{core,runtime}@1.11.3` entries that were absent. Story 1.6 had already fixed
+this same cross-platform class once; the Story 1.7 macOS install silently reintroduced it, and
+nothing caught it because **Story 1.7's gates only ever ran on macOS**.
+
+**Fix (`5719c2c`) — regenerate the lockfile from the Linux target**, using
+`npm install --package-lock-only` inside `node:24-slim` on `linux/amd64` (Node v24.19.0,
+npm 11.17.0), matching the CI runner family.
+
+Minimal, with **no dependency drift**:
+
+| Metric | Result |
+|---|---|
+| Dependency versions changed | **0** |
+| Packages removed | **0** |
+| Packages added | **4** — only the `@emnapi` optional WASM entries npm reported missing |
+| `lockfileVersion` | unchanged (3); 853 → 857 packages |
+| `package.json` | **byte-identical** (`711793246e813daa16052458bfbd897a3b210de8`) |
+
+**Verification, real exit codes captured directly (never through a pipe):**
+
+| Check | Result |
+|---|---|
+| Linux `npm ci` **before** fix | **exit 1** — CI failure reproduced locally in the container |
+| Linux `npm ci` **after** fix | **exit 0** |
+| macOS `npm ci` **after** fix | **exit 0** |
+| `./infrastructure/scripts/checks.sh` | **exit 0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **exit 0** |
+| `frontend/next-env.d.ts` | unchanged (`ce4e94a6b10f160ee021fe18939af160d2927dcf`) |
+
+The fix was landed on `main` as a **separate accepted-Story correction** and deliberately **not**
+added to PR #1, which stays a one-file CI PR.
+
+**Likely collateral, not yet confirmed:** `infrastructure/docker/frontend.Dockerfile:6` also runs
+`npm ci` on Linux, so the Docker frontend image build was probably broken by the same lockfile and
+should be fixed by `5719c2c` too. **Not verified** — the image was not rebuilt.
+
+**Standing lesson:** a lockfile verified only on the development host is not verified. Whenever
+`package-lock.json` changes, check `npm ci` on **both** macOS and the Linux deployment target.
+
+---
+
+**Remaining to finish Story 1.8 (NOT yet done, requires explicit approval):** observe a **real**
+GitHub Actions pull-request run pass end to end, then merge PR #1. Until that run passes, the DoD
+is unmet and the Story stays IN PROGRESS.
 
 ---
 
