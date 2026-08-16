@@ -677,9 +677,9 @@ class EmailVerificationArchitectureGuardTests(BaseEmailVerificationTestCase):
         """Asserts accounts defines {User, CoachProfile, ClientProfile}, no token model."""
         accounts_app = apps.get_app_config("accounts")
         concrete_model_names = {model._meta.object_name for model in accounts_app.get_models()}
-        expected_model_names = {"User", "CoachProfile", "ClientProfile"}
+        expected_model_names = {"User", "CoachProfile", "ClientProfile", "CoachSecurity"}
         self.assertSetEqual(
             concrete_model_names,
             expected_model_names,
-            "accounts must contain only User, CoachProfile, ClientProfile (no token model).",
+            "accounts must contain only the approved models (no session or token model).",
         )
