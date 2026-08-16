@@ -25,3 +25,15 @@ class CoachRegistrationSerializer(serializers.Serializer):
         except DjangoValidationError as exc:
             raise serializers.ValidationError({"password": list(exc.messages)}) from exc
         return attrs
+
+
+class EmailVerificationSerializer(serializers.Serializer):
+    """Validate an email-verification token submission."""
+
+    token = serializers.CharField()
+
+
+class EmailVerificationResendSerializer(serializers.Serializer):
+    """Validate an email address for verification-email resend requests."""
+
+    email = serializers.EmailField()
