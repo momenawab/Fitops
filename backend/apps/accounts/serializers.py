@@ -44,3 +44,9 @@ class CoachLoginSerializer(serializers.Serializer):
 
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+
+
+class TwoFactorCodeSerializer(serializers.Serializer):
+    """Validate a time-based one-time password submission."""
+
+    code = serializers.CharField(min_length=6, max_length=6)

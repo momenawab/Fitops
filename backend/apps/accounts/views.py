@@ -1,14 +1,16 @@
 """Views for account API endpoints."""
 
+import binascii
 from functools import partial
 
+import pyotp
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model, login
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework import exceptions, serializers, status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -19,6 +21,7 @@ from .serializers import (
     CoachRegistrationSerializer,
     EmailVerificationResendSerializer,
     EmailVerificationSerializer,
+    TwoFactorCodeSerializer,
 )
 from .tokens import email_verification_token_generator
 
@@ -30,6 +33,8 @@ EMAIL_RESEND_RESPONSE = {
     "message": "If an unverified account exists for this email, a verification email has been sent."
 }
 INVALID_VERIFICATION_TOKEN_MESSAGE = "Invalid or expired verification token."
+INVALID_TWO_FACTOR_CODE_MESSAGE = "Invalid two-factor authentication code."
+PENDING_TWO_FACTOR_USER_ID_SESSION_KEY = "pending_2fa_user_id"
 
 
 def _send_verification_email(user):
@@ -164,7 +169,112 @@ class CoachLoginView(APIView):
             raise EmailNotVerified()
 
         if CoachSecurity.objects.filter(user=user, two_factor_enabled=True).exists():
+            request.session[PENDING_TWO_FACTOR_USER_ID_SESSION_KEY] = str(user.pk)
             return Response({"authenticated": False, "requires_2fa": True})
 
         login(request, user)
         return Response({"authenticated": True})
+
+
+def _raise_invalid_two_factor_code():
+    """Raise a field-level validation error without exposing TOTP state."""
+    raise serializers.ValidationError({"code": [INVALID_TWO_FACTOR_CODE_MESSAGE]})
+
+
+def _is_valid_two_factor_code(secret, code):
+    """Verify a TOTP code, treating malformed stored secrets as invalid."""
+    try:
+        return pyotp.TOTP(secret).verify(code)
+    except TypeError, ValueError, binascii.Error:
+        return False
+
+
+class TwoFactorSetupView(APIView):
+    """Generate a new TOTP secret for the authenticated user."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        security, _ = CoachSecurity.objects.get_or_create(user=request.user)
+        secret = pyotp.random_base32()
+        security.two_factor_secret = secret
+        security.two_factor_enabled = False
+        security.save(update_fields=["two_factor_secret", "two_factor_enabled", "updated_at"])
+        uri = pyotp.TOTP(secret).provisioning_uri(
+            name=request.user.email,
+            issuer_name="FitOps",
+        )
+        return Response({"secret": secret, "otpauth_uri": uri})
+
+
+class TwoFactorConfirmView(APIView):
+    """Enable TOTP after the authenticated user proves possession of its secret."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = TwoFactorCodeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        security = CoachSecurity.objects.filter(user=request.user).first()
+        if security is None or not security.two_factor_secret:
+            _raise_invalid_two_factor_code()
+        if not _is_valid_two_factor_code(
+            security.two_factor_secret, serializer.validated_data["code"]
+        ):
+            _raise_invalid_two_factor_code()
+
+        security.two_factor_enabled = True
+        security.save(update_fields=["two_factor_enabled", "updated_at"])
+        return Response()
+
+
+class TwoFactorVerifyView(APIView):
+    """Complete a pending 2FA login after validating its TOTP code."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = TwoFactorCodeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        pending_user_id = request.session.get(PENDING_TWO_FACTOR_USER_ID_SESSION_KEY)
+        if pending_user_id is None:
+            raise InvalidCredentials()
+
+        user = get_user_model().objects.filter(pk=pending_user_id).first()
+        security = (
+            CoachSecurity.objects.filter(user=user, two_factor_enabled=True).first()
+            if user is not None
+            else None
+        )
+        if security is None or not security.two_factor_secret:
+            raise InvalidCredentials()
+        if not _is_valid_two_factor_code(
+            security.two_factor_secret, serializer.validated_data["code"]
+        ):
+            _raise_invalid_two_factor_code()
+
+        login(request, user)
+        del request.session[PENDING_TWO_FACTOR_USER_ID_SESSION_KEY]
+        return Response()
+
+
+class TwoFactorDisableView(APIView):
+    """Disable TOTP after proving possession of the current TOTP secret."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = TwoFactorCodeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        security = CoachSecurity.objects.filter(user=request.user).first()
+        if security is None or not security.two_factor_secret:
+            _raise_invalid_two_factor_code()
+        if not _is_valid_two_factor_code(
+            security.two_factor_secret, serializer.validated_data["code"]
+        ):
+            _raise_invalid_two_factor_code()
+
+        security.two_factor_enabled = False
+        security.two_factor_secret = ""
+        security.save(update_fields=["two_factor_enabled", "two_factor_secret", "updated_at"])
+        return Response()

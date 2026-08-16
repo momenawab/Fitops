@@ -14,7 +14,7 @@ Validates:
 
 from django.apps import apps
 from django.conf import settings
-from django.contrib.auth import get_user_model
+from django.contrib.auth import SESSION_KEY, get_user_model
 from django.core.cache import cache
 from django.db import models
 from django.test import TestCase
@@ -475,15 +475,17 @@ class LoginTwoFactorBranchTests(BaseLoginApiTestCase):
             {"authenticated": False, "requires_2fa": True},
             "2FA-enabled login response body must match exact contract dictionary.",
         )
-        session_cookie_name = settings.SESSION_COOKIE_NAME
+        # The Story 2.7 session bridge stores a pending-2FA marker in the Django session,
+        # so a sessionid cookie MAY appear here. The invariant is that the session is not
+        # AUTHENTICATED: _auth_user_id must be absent until /auth/2fa/verify succeeds.
         self.assertNotIn(
-            session_cookie_name,
-            response.cookies,
-            "2FA-enabled login must NOT issue a session cookie prior to 2FA verification.",
+            SESSION_KEY,
+            self.client.session,
+            "2FA-enabled login must NOT establish an authenticated session before verification.",
         )
 
-    def test_2fa_required_response_creates_no_session_cookie(self):
-        """Guards trap: prominent assertion that 2FA branch strictly avoids creating a session."""
+    def test_2fa_required_response_establishes_no_authenticated_session(self):
+        """Guards trap: prominent assertion that the 2FA branch never authenticates the session."""
         user = get_user_model().objects.create_user(
             email="2fa.nosession@example.com",
             password="SecurePassword123!",
@@ -502,11 +504,18 @@ class LoginTwoFactorBranchTests(BaseLoginApiTestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        session_cookie_name = settings.SESSION_COOKIE_NAME
+        # A pending-2FA session may exist, but it must carry no authenticated identity.
         self.assertNotIn(
-            session_cookie_name,
-            response.cookies,
-            "Session cookie must be completely absent from 2FA challenge response.",
+            SESSION_KEY,
+            self.client.session,
+            "2FA challenge must never place an authenticated identity in the session.",
+        )
+        # Strictly stronger than a cookie check: the pending session must open no doors.
+        protected_response = self.client.post("/api/v1/auth/2fa/setup", format="json")
+        self.assertIn(
+            protected_response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+            "A pending-2FA session must not grant access to authenticated endpoints.",
         )
 
     def test_2fa_enabled_wrong_password_returns_401_invalid_credentials(self):
