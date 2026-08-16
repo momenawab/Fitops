@@ -86,3 +86,18 @@ class ClientProfile(models.Model):
 
     def __str__(self):
         return str(self.user)
+
+
+class CoachSecurity(models.Model):
+    """Sensitive coach authentication settings."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        related_name="coach_security",
+        on_delete=models.CASCADE,
+    )
+    two_factor_enabled = models.BooleanField(default=False)
+    two_factor_secret = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)

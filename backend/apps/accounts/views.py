@@ -3,17 +3,19 @@
 from functools import partial
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
+from django.contrib.auth import authenticate, get_user_model, login
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
 from django.utils import timezone
-from rest_framework import serializers, status
+from rest_framework import exceptions, serializers, status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from .models import CoachSecurity
 from .serializers import (
+    CoachLoginSerializer,
     CoachRegistrationSerializer,
     EmailVerificationResendSerializer,
     EmailVerificationSerializer,
@@ -123,3 +125,46 @@ class EmailVerificationResendView(APIView):
                 transaction.on_commit(partial(_send_verification_email, user))
 
         return Response(EMAIL_RESEND_RESPONSE)
+
+
+class EmailNotVerified(exceptions.PermissionDenied):
+    """Return the documented error code for an unverified email address."""
+
+    default_code = "EMAIL_NOT_VERIFIED"
+    default_detail = "Email address has not been verified."
+
+
+class InvalidCredentials(exceptions.APIException):
+    """Return a 401 response without DRF's authenticator-header downgrade."""
+
+    status_code = status.HTTP_401_UNAUTHORIZED
+    default_code = "INVALID_CREDENTIALS"
+    default_detail = "Invalid credentials."
+
+
+class CoachLoginView(APIView):
+    """Authenticate a verified coach and start a Django session when 2FA is disabled."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+    def post(self, request):
+        serializer = CoachLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = authenticate(
+            request,
+            email=serializer.validated_data["email"],
+            password=serializer.validated_data["password"],
+        )
+        if user is None:
+            raise InvalidCredentials()
+
+        if user.email_verified_at is None:
+            raise EmailNotVerified()
+
+        if CoachSecurity.objects.filter(user=user, two_factor_enabled=True).exists():
+            return Response({"authenticated": False, "requires_2fa": True})
+
+        login(request, user)
+        return Response({"authenticated": True})
