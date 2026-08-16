@@ -102,12 +102,12 @@ A Client who also belongs to another Workspace will not see that Workspace insid
 │id            │    │id            │
 │user_id FK    │    │user_id FK    │
 │bio           │    │DOB           │
-│image         │    │gender        │
-│website       │    │height        │
-│instagram     │    │weight        │
-└──────────────┘    │goal          │
-                    └──────┬───────┘
-                           │
+│profile_image │    │gender        │
+│website_url   │    │height        │
+│instagram_url │    │weight        │
+│created_at    │    │goal          │
+│updated_at    │    └──────┬───────┘
+└──────────────┘           │
                            ▼
                    ┌─────────────────┐
                    │   Membership    │
