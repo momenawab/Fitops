@@ -518,7 +518,7 @@ Create User model with:
 
 ---
 
-## Story 2.2 — Coach Profile
+## Story 2.2 — Coach Profile — ✅ COMPLETE (2026-08-16)
 
 Create:
 

@@ -31,8 +31,8 @@
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
 | **Current Epic** | Epic 02 — Authentication & Identity |
-| **Current Story** | Story 2.1 — Custom User Model — **COMPLETE and accepted** (2026-08-16) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Story 2.1 complete**; Story 2.2 not started |
+| **Current Story** | Story 2.3 — Client Profile — **IN PROGRESS** (3 workers dispatched in parallel) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Stories 2.1 and 2.2 complete**; 2.3 in progress |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-15 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -588,7 +588,103 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 2.1 is complete and accepted; Story 2.2 has not started.
+### Story 2.3 — Client Profile  (Epic 02 — Authentication & Identity)
+
+**Status:** IN PROGRESS — three workers dispatched in parallel on 2026-08-16. **Not complete.**
+
+**Authoritative field set** (Database & Auth Architecture §10; the ERD's textual listing agrees
+field for field) — **11 fields**:
+
+```
+id · user_id · date_of_birth · gender · height · current_weight ·
+goal · training_experience · notes · created_at · updated_at
+```
+
+**🔒 Locked rule — `ClientProfile` MUST NOT contain `workspace_id`.** Stated in four places:
+Blueprint Story 2.3, DB & Auth Architecture §10, the ERD's `# IMPORTANT` note, and CLAUDE.md §8.
+Client identity is global; the Client↔Workspace relationship is expressed **only** through
+`Membership(role=CLIENT)`.
+
+**Approved field decisions (user, 2026-08-16):** `gender` is a `CharField` with **no choices/enum**
+(none is defined in any approved document, so inventing one would add unapproved enum values);
+`height` and `current_weight` are **`DecimalField`**s; the user link is a `OneToOneField` to
+`AUTH_USER_MODEL` with `related_name="client_profile"` and `CASCADE`; `id` is a UUID primary key.
+
+**⚠️ Documented trap recorded for future agents.** DB §22 / ERD §335 and the API Specification's
+public-application JSON contain a **similar-looking but different** field list belonging to the
+**`Application`** model: `full_name · email · phone · age · gender · height · weight · goal ·
+training_experience · notes`. `Application` has **`age`** and **`weight`**; `ClientProfile` has
+**`date_of_birth`** and **`current_weight`**, and has no name/email/phone (that lives on `User`).
+Both briefs called this out explicitly so no worker copies the wrong list.
+
+**Second ERD conflict found during preflight** — same class as the CoachProfile one fixed in Story
+2.2. The ERD's ASCII diagram shows `DOB`/`weight` and omits `training_experience`, `notes`,
+`created_at`, `updated_at`, contradicting both DB §10 and the ERD's own textual listing. Resolved
+by CLAUDE.md §23 precedence and assigned to a dedicated worker. Note it is geometrically harder
+than the last one: `training_experience` is 19 characters against a 14-character box interior, so
+the box must widen and its connector chain into `Membership` must be re-aligned.
+
+**Task breakdown — 3 genuinely independent streams, no manufactured work:**
+
+| ID | Task | Complexity | Worker | Allowed files |
+|---|---|---|---|---|
+| A | ClientProfile model + migration `0003` | Very hard | **Codex** | `accounts/models.py`, `migrations/0003_*.py` |
+| B | Independent model tests | Medium | **AGY** `gemini-3.7-flash-high` | `tests/test_client_profile_model.py` |
+| C | ERD ASCII diagram correction | Easy–medium | **OpenCode** `zai-coding-plan/glm-5.3` | ERD markdown |
+
+No file is writable by two workers. B is written from the same authoritative specification as A,
+not from A's output, so it remains an independent check — including a dedicated falsifiable guard
+that no `workspace_id` / `workspace` / `membership` field or column exists.
+
+**Story 2.4 cannot parallelise with 2.3** — it is `POST /auth/register`, depending on this model
+plus views, serializers and URLs.
+
+---
+
+## Completed — Story 2.2
+
+### Story 2.2 — Coach Profile  (Epic 02 — Authentication & Identity)
+
+**Status:** ✅ **COMPLETE** — PR #3 merged by the user as `ec3c7d3` on 2026-08-16.
+
+**Acceptance:** `CoachProfile` implemented exactly per Database & Auth Architecture §9 —
+`id · user_id · bio · profile_image · website_url · instagram_url · created_at · updated_at`.
+
+**Approved decisions:**
+
+- **`profile_image` is a `FileField`, deliberately NOT an `ImageField`.** `ImageField` requires
+  Pillow, which is not installed; Story 2.2 has no upload API. No image processing, upload
+  behaviour or dependency was added — that belongs to later storage/upload work.
+  **Mutation-proven:** swapping to `ImageField` is rejected by Django check `fields.E210`.
+- `user` is a `OneToOneField` to `settings.AUTH_USER_MODEL`, `related_name="coach_profile"`,
+  `on_delete=CASCADE`; uniqueness enforced by the database.
+- `id` is a UUID primary key, consistent with `User`.
+- **No validators** — no documented rule constrains `bio` length or URL format, so none was invented.
+
+**First ERD conflict found and fixed.** The ERD's diagram used `image` / `website` / `instagram` and
+omitted the timestamps, contradicting DB §9. Resolved by CLAUDE.md §23 precedence (the specialized
+document governs model fields) and synchronized in the same Story. Documentation synchronization
+only; every `ClientProfile` field was left untouched and alignment was verified programmatically.
+
+**Execution — first true 3-way parallel Story.** Codex (model + migration), AGY
+`gemini-3.7-flash-high` (16 tests), OpenCode `zai-coding-plan/glm-5.3` (ERD sync) ran concurrently
+on disjoint files with zero permission denials. Each was reviewed as it finished rather than in a
+batch. **Honest assessment:** A was the critical path — B and C finished well before it, so
+wall-clock was governed by Codex. The gain was removing review-and-wait gaps, not tripling
+throughput. C was work that would not otherwise have happened.
+
+**Verification by Master, real exit codes:** three `manage.py check` runs 0 · repo-wide
+`makemigrations --check` 0 · migration applied to real PostgreSQL, table carrying exactly the 8
+documented columns with `accounts_coachprofile_user_id_key` UNIQUE and an FK to `accounts_user` ·
+35 tests pass · `checks.sh` exit 0, all 7 gates. **Mutation-checked twice:** renaming `related_name`
+produced 1 failure + 2 errors from the assertions; the `FileField`→`ImageField` swap was rejected
+by `fields.E210`. The model was restored byte-identical after each.
+
+**Remote acceptance:** PR #3 → run
+[31955936125](https://github.com/momenawab/Fitops/actions/runs/31955936125) **success**, all 9
+steps, none skipped. Tested merge `2491db8 = Merge 0d83f2d into 289d056`.
+
+Commits: `7e11439` (model) · `71e5af8` (tests) · `0d83f2d` (ERD sync).
 
 ---
 
