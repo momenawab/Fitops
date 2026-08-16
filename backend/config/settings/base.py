@@ -202,6 +202,7 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "common.pagination.FitOpsPageNumberPagination",
     "PAGE_SIZE": 20,
+    "EXCEPTION_HANDLER": "common.exceptions.fitops_exception_handler",
 }
 
 

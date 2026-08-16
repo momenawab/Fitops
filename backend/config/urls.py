@@ -1,4 +1,7 @@
 """Root URL configuration for FitOps."""
 
-# Application routes are registered by later tasks.
-urlpatterns = []
+from django.urls import include, path
+
+urlpatterns = [
+    path("api/v1/", include("apps.accounts.urls")),
+]
