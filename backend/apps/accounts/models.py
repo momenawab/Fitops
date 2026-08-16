@@ -58,3 +58,31 @@ class CoachProfile(models.Model):
 
     def __str__(self):
         return str(self.user)
+
+
+class ClientProfile(models.Model):
+    """Global identity and training details for a Client."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        related_name="client_profile",
+        on_delete=models.CASCADE,
+    )
+    date_of_birth = models.DateField(null=True, blank=True)
+    gender = models.CharField(max_length=32, blank=True)
+    height = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    current_weight = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    goal = models.CharField(max_length=255, blank=True)
+    training_experience = models.CharField(max_length=100, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return str(self.user)
