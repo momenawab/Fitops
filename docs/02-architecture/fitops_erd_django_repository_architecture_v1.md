@@ -93,22 +93,26 @@ A Client who also belongs to another Workspace will not see that Workspace insid
 │ updated_at           │
 └──────────┬───────────┘
            │
-     ┌─────┴───────────────┐
-     │                     │
-     ▼                     ▼
-┌──────────────┐    ┌──────────────┐
-│CoachProfile  │    │ClientProfile │
-├──────────────┤    ├──────────────┤
-│id            │    │id            │
-│user_id FK    │    │user_id FK    │
-│bio           │    │DOB           │
-│profile_image │    │gender        │
-│website_url   │    │height        │
-│instagram_url │    │weight        │
-│created_at    │    │goal          │
-│updated_at    │    └──────┬───────┘
-└──────────────┘           │
-                           ▼
+     ┌─────┴───────────────────┐
+     │                         │
+     ▼                         ▼
+┌──────────────┐    ┌─────────────────────┐
+│CoachProfile  │    │ClientProfile        │
+├──────────────┤    ├─────────────────────┤
+│id            │    │id                   │
+│user_id FK    │    │user_id FK           │
+│bio           │    │date_of_birth        │
+│profile_image │    │gender               │
+│website_url   │    │height               │
+│instagram_url │    │current_weight       │
+│created_at    │    │goal                 │
+│updated_at    │    │training_experience  │
+└──────────────┘    │notes                │
+                    │created_at           │
+                    │updated_at           │
+                    └──────────┬──────────┘
+                               │
+                               ▼
                    ┌─────────────────┐
                    │   Membership    │
                    ├─────────────────┤
