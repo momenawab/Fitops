@@ -31,10 +31,10 @@
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
 | **Current Epic** | Epic 02 — Authentication & Identity |
-| **Current Story** | Story 2.6 — Coach Login — **COMPLETE and merged** (2026-08-17) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Stories 2.1–2.6 complete**; Story 2.7 NOT started |
+| **Current Story** | Story 2.7 — TOTP 2FA — **COMPLETE and merged** (2026-08-17) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Stories 2.1–2.7 complete**; Story 2.8 NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
-| **Last updated** | 2026-08-15 |
+| **Last updated** | 2026-08-17 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
 
 **Repository state:** git repository initialized on branch `main`, working tree clean. Story 1.1
@@ -588,7 +588,128 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 2.6 is complete and merged; Story 2.7 has not started.
+**No Story currently in progress.** Story 2.7 is complete and merged; Story 2.8 has not started.
+
+---
+
+## Completed — Story 2.7
+
+### Story 2.7 — TOTP 2FA  (Epic 02 — Authentication & Identity)
+
+**Status:** ✅ **COMPLETE** — **PR #8 merged as `a1c9d555773c518623c237053817af830a5b5cba`** on
+2026-08-17. Verified: `origin/main` and local `main` both equal that SHA, and the merged diff
+introduced exactly the six intended Story 2.7 files.
+
+**Implemented — four endpoints (API §4), all success responses HTTP 200:**
+
+| Route | Permission | Success body |
+|---|---|---|
+| `POST /api/v1/auth/2fa/setup` | `IsAuthenticated` | `{secret, otpauth_uri}` |
+| `POST /api/v1/auth/2fa/confirm` | `IsAuthenticated` | empty |
+| `POST /api/v1/auth/2fa/verify` | `AllowAny` | empty |
+| `POST /api/v1/auth/2fa/disable` | `IsAuthenticated` | empty |
+
+`verify` is `AllowAny` because the caller is mid-login and has no session yet; its security comes
+from the pending-2FA marker plus a valid TOTP code, not from a permission class.
+
+**Approved architecture decision — the login session bridge (user-approved 2026-08-17):**
+
+`POST /auth/login` with valid credentials and 2FA enabled stores a pending-2FA marker
+(`pending_2fa_user_id`) in the Django session and **does not call `login()`**. `POST /auth/2fa/verify`
+reads the marker, validates the code, then calls `login()` and consumes the marker. The documented
+login request and response bodies are **unchanged**, and Story 2.6's ordering
+(authenticate → email verification → 2FA gate) and its 401/403 semantics are preserved intact.
+
+**Consequence that changed two accepted Story 2.6 tests.** Writing to the Django session
+*necessarily* emits a `sessionid` cookie, so the pre-2.7 assertion "the 2FA login challenge sets no
+session cookie" is no longer a true statement about login. The user approved amending it. The
+recorded invariant is now:
+
+1. Login with valid credentials + 2FA enabled **may** create a session / `sessionid` cookie, but
+   **must not** set `_auth_user_id`, and protected endpoints must remain inaccessible.
+2. `/auth/2fa/verify` with a correct code consumes the pending state and **must** set `_auth_user_id`.
+3. Invalid or missing verification **must not** authenticate.
+
+Auth tests assert `_auth_user_id` state and protected-route access, **never** cookie presence or
+absence — a cookie check can pass while the session is authenticated, so it is the weaker assertion.
+This was proven: mutating `CoachLoginView` to call `login()` on the 2FA path is caught by both
+amended Story 2.6 tests.
+
+**Dependency added:** `pyotp==2.10.0`, pinned in `backend/requirements.txt`. RFC 6238 was **not**
+hand-rolled, by user decision. This is the first dependency added beyond the Story 1.x baseline.
+
+**DEFERRED by explicit user decision — not implemented, and not to be invented later:**
+
+| Deferred | Why |
+|---|---|
+| Verification attempt limit / lockout | No number is specified in any approved document |
+| Recovery codes / recovery model / admin bypass | No recovery mechanism is specified |
+| Membership / workspace role enforcement on 2FA routes | `Membership` does not exist yet (Epic 03) |
+| Throttling on the four 2FA endpoints | API §22 does not list them; Epic 20 owns rate limiting |
+
+Blueprint Story 2.7 lists "Verification attempt limits" and "Secure recovery strategy" as
+requirements. Both are marked DEFERRED in the Blueprint entry as well. **They must be specified
+before they are built** — Epic 20 (Security & Hardening) is the natural home for the attempt limit.
+
+**Secret handling:** stored in the documented field `CoachSecurity.two_factor_secret`. TOTP secrets
+must be reversible to compute codes, so they are **not** hashed, and no new field was added. The
+secret is returned **only** by `/2fa/setup`. Each `setup` call regenerates the secret and forces
+`two_factor_enabled = False` until re-confirmed; `disable` clears the secret.
+
+**Master-run, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / dev / prod | **0** / **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** — no model change, no migration |
+| Focused Story 2.7 tests | **0** — 33 pass |
+| Focused Story 2.6 tests (regression) | **0** — 31 pass |
+| Full suite | **0** — **171 tests** pass |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **0** |
+| GitHub Actions CI | **success** — run `31976565067` |
+
+**CI evidence.** The run log reads `Merge 3dff154a6cde… into fd0100cd5f2e…`, and the `refs/pull/8/merge`
+parents were confirmed to equal the live PR head and base. CI tested the actual current merge, not a
+stale ref — the failure mode seen in Story 1.8.
+
+**Mutation-checked — all guards proven non-vacuous:**
+
+| Mutation | Result |
+|---|---|
+| Call `login()` on the 2FA challenge path (full 2FA bypass) | **4 failures**, incl. both amended 2.6 tests |
+| `/2fa/verify` accepts a missing pending marker | **caught** — no-marker + replay tests |
+| TOTP validation always returns true | **3 failures** — verify / confirm / disable |
+| `setup` enables 2FA without confirmation | **2 failures** |
+
+`views.py` restored **byte-identical** after every mutation (`eb2f0496…` before and after).
+
+**Master fixes disclosed** (not folded silently into worker output) — five defects in the Task B
+test file, which had never been executed by its author:
+
+1. Canary secret `"CANARY_SECRET_NEVER_LEAK_TOTP_KEY_987654"` is not valid base32, so `pyotp` raised.
+2. The same test called `disable` before `confirm`, but `disable` clears the secret.
+3. The 405 method tests ran unauthenticated; DRF runs permission checks before method dispatch, so a
+   protected route returns 403 and can never reach 405.
+4. The `AllowAny` test asserted "not 401/403", contradicting the same brief's requirement that a
+   missing marker return 401. Rewritten to assert the envelope code is not `PERMISSION_DENIED` /
+   `AUTHENTICATION_REQUIRED`.
+5. A "generates new secret" test never asserted the secret actually changed (surfaced as an unused
+   variable). Assertion added rather than the variable deleted.
+
+**Test weakness found and fixed during review.** `test_verify_without_pending_marker_fails_and_creates_no_session`
+created **no user at all**, so it could not distinguish "rejected because no pending marker" from
+"rejected because the database was empty" — it could not have caught the bypass its own docstring
+claimed to guard. It now performs the real attack: a genuinely valid TOTP code for a real
+2FA-enabled account, with no marker. Found because a mutation produced an ERROR rather than a clean
+FAIL.
+
+**Known observation, deliberately not changed:** `/2fa/verify` uses
+`del request.session[PENDING_TWO_FACTOR_USER_ID_SESSION_KEY]` after `login()`. The marker is
+guaranteed present on that path, so this is correct today, and failing loudly if that invariant ever
+breaks is arguably preferable to `.pop(..., None)`.
+
+**Next Story:** 2.8 — Client OTP.
 
 ---
 
@@ -1821,53 +1942,48 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 | Field | Value |
 |---|---|
 | **Epic** | Epic 02 — Authentication & Identity |
-| **Story ID** | **Story 2.7** |
-| **Story title** | TOTP 2FA |
+| **Story ID** | **Story 2.8** |
+| **Story title** | Client OTP |
 
-**Do NOT start Story 2.7 automatically — user approval required. No implementation has begun.**
+**Do NOT start Story 2.8 automatically — user approval required. No implementation has begun.**
 
-**Blueprint §7 Story 2.7, verbatim:**
+**Blueprint §7 Story 2.8, verbatim:**
 
 ```
-## Story 2.7 — TOTP 2FA
+## Story 2.8 — Client OTP
 
 Implement:
 
-POST /auth/2fa/setup
-POST /auth/2fa/confirm
-POST /auth/2fa/verify
-POST /auth/2fa/disable
-
-Requirements:
-
-- TOTP secret protection
-- Setup confirmation
-- Verification attempt limits
-- Secure recovery strategy
+POST /auth/client/request-code
+POST /auth/client/verify-code
 ```
 
-**Notes before starting Story 2.7 — carried from Story 2.6:**
+(Read the full Blueprint entry before planning — the block above is the endpoint list only.)
 
-1. **`CoachSecurity` already exists** (Story 2.6) with `two_factor_enabled` and
-   `two_factor_secret`. **No new model should be needed** — verify that in preflight rather than
-   assuming, and add none without an explicit decision.
-2. **`POST /auth/2fa/verify` completes the login begun by `/auth/login`.** Story 2.6 deliberately
-   does **not** create a session when `requires_2fa` is true, so 2.7 must create it on successful
-   verification. Read Story 2.6's login view before designing this — the two halves must fit.
-3. ⚠️ **A 401 needs an `APIException` subclass, not `AuthenticationFailed`.** DRF coerces 401 → 403
-   whenever no authenticator supplies a `WWW-Authenticate` header, and `SessionAuthentication`
-   supplies none. This cost a bounded rework in Story 2.6.
-4. **`two_factor_secret` is sensitive.** It may be returned **only** by `/auth/2fa/setup`, which
-   exists to deliver it. It must never appear in any other response, log, or error.
-5. **"Verification attempt limits" and "secure recovery strategy" are stated but not quantified.**
-   Expect these to be **blocking decisions** — no attempt count, lockout duration or recovery
-   mechanism is specified anywhere. Do not invent them.
-6. **TOTP needs a library** (e.g. `pyotp`), which is **not** in the locked stack and **not**
-   installed. Adding a dependency requires explicit approval — surface it in preflight.
-7. `/auth/2fa/setup`, `/confirm` and `/disable` are **Coach-only** per API §4; `/verify` is reached
-   mid-login. Resolve each endpoint's permission class in preflight.
-8. Reuse the scoped-throttle pattern and the API §2 error envelope; both are live.
-9. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 2.7.
+**Notes before starting Story 2.8 — carried from Story 2.7:**
+
+1. **OTP must never be stored in plaintext.** CLAUDE.md §12 and Blueprint Epic 20 require:
+   hash the code, ~10-minute expiry, one-time use, max verification attempts, strict rate limiting,
+   and invalidation of the previous active OTP when a new one is generated.
+2. **`LoginOTP` is a documented model in `accounts`** (DB Architecture §2–§23) but does **not** yet
+   exist in code. Read the authoritative field list before creating it — do not add fields from
+   memory. This Story will need a migration, unlike Story 2.7.
+3. **Client OTP request/verify include `workspace_slug`** (API §5). This is the first auth endpoint
+   pair that is workspace-aware, but **`Workspace` and `Membership` do not exist yet** (Epic 03).
+   Resolve in preflight how far 2.8 can go without them, and surface it as a blocking decision
+   rather than inventing tenant logic.
+4. **Anti-enumeration is required** on the OTP request endpoint — always return a generic success
+   response (CLAUDE.md §19), exactly as Story 2.5's resend endpoint does. Reuse that pattern.
+5. **Rate limiting IS mandatory here**, unlike the 2FA endpoints — API §22 explicitly lists client
+   OTP request and client OTP verify. It controls email cost and abuse. The scoped-throttle pattern
+   is live; pick rates only from an approved document or ask.
+6. ⚠️ **A 401 needs an `APIException` subclass, not `AuthenticationFailed`** — DRF coerces 401 → 403
+   under `SessionAuthentication`. This has now cost rework in Stories 2.6 and 2.7.
+7. **Clients have no password and no 2FA in Phase 1.** Do not reuse the coach login view or the
+   pending-2FA session bridge — the flows are separate.
+8. **Documented error codes exist for this flow:** `INVALID_OTP`, `OTP_EXPIRED`, `OTP_RATE_LIMITED`.
+   Use them; invent none.
+9. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 2.8.
 
 
 **Carry-ins still live:**

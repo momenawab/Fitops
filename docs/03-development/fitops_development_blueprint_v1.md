@@ -612,7 +612,7 @@ Session
 
 ---
 
-## Story 2.7 — TOTP 2FA
+## Story 2.7 — TOTP 2FA — ✅ COMPLETE (2026-08-17)
 
 Implement:
 
@@ -625,10 +625,21 @@ POST /auth/2fa/disable
 
 Requirements:
 
-- TOTP secret protection
-- Setup confirmation
-- Verification attempt limits
-- Secure recovery strategy
+- TOTP secret protection — **done**
+- Setup confirmation — **done**
+- Verification attempt limits — **DEFERRED** (no limit is specified in any approved document)
+- Secure recovery strategy — **DEFERRED** (no recovery mechanism is specified)
+
+**Two requirements above are deliberately unimplemented.** No approved document specifies an
+attempt/lockout number or a recovery mechanism, so inventing either would have created
+undocumented security behaviour. Both were explicitly deferred by user decision on 2026-08-17
+and must be specified before they are built. Epic 20 (Security & Hardening) is the natural home
+for the attempt limit.
+
+Login session bridge (approved 2026-08-17): `POST /auth/login` stores a pending-2FA marker in the
+Django session **without** calling `login()`; `POST /auth/2fa/verify` validates the code, then
+authenticates the session and consumes the marker. The documented login request/response bodies
+are unchanged.
 
 ---
 
