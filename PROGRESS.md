@@ -1436,18 +1436,45 @@ Verify
    the first endpoint, and therefore the first serializer, view and URL wiring. Read **API
    Specification §4 (auth)** for the exact contract — request/response shape, status codes and the
    standard error envelope — and implement exactly that. Invent no endpoint.
-2. **Anti-enumeration is mandatory.** Registration and resend-verification must always return a
-   generic success response, so an attacker cannot discover which emails exist (CLAUDE.md §19).
-3. **Rate limiting is mandatory** on registration (API §22).
+2. **Anti-enumeration** — see the resolved decisions below.
+3. ⚠️ **CORRECTION.** An earlier revision of this file stated *"Rate limiting is mandatory on
+   registration (API §22)."* **That was wrong.** API §22's mandatory list is: login, password reset,
+   email verification, client OTP request, client OTP verify, file uploads, public application
+   endpoints, and sensitive admin actions. **Registration is not on it.** Authentication rate
+   limiting is owned by **Epic 20**, and there is currently no throttle configuration in the
+   codebase at all. See the resolved decisions below.
 4. **Email goes through Django's email backend only** — never a provider SDK. The SMTP provider is
    deliberately unselected in `docs/MISSING_DECISIONS.md` and blocks nothing: dev settings use the
    console backend.
-5. The verification token itself belongs to **Story 2.5** (`POST /auth/email/verify` / `resend`,
-   with expiring, securely-stored tokens). Keep 2.4 to registration plus triggering the email; do
-   not build the verification endpoint here.
+5. The verification **endpoints** belong to **Story 2.5** (`POST /auth/email/verify` / `resend`).
+   See the resolved token decision below for the 2.4/2.5 boundary.
 6. `User` uses `AbstractBaseUser` **without** `PermissionsMixin`, and there is deliberately **no**
    `create_superuser`. Create users through `UserManager.create_user`.
 7. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 2.4.
+
+---
+
+#### Story 2.4 — resolved decisions (user, 2026-08-16), recorded before dispatch
+
+The Story 2.4 preflight surfaced four genuine gaps in the authoritative documents. All four were
+reported rather than guessed, and resolved explicitly:
+
+| # | Gap found in preflight | Resolution |
+|---|---|---|
+| 1 | **No email-verification token model exists anywhere in the approved architecture.** Documented models are `User`, `CoachSecurity`, `LoginOTP`, `Workspace`, `Membership`, `CoachProfile`, `ClientProfile` plus business/billing models; `LoginOTP` is explicitly the *Client OTP login* mechanism, not coach email verification. Yet Story 2.5 requires "expiring token / secure token storage" | Use a **stateless signed token** via Django's approved signing/token mechanism. **No new token model.** Story 2.4 sends the verification email **after** successful user creation and transaction commit; Story 2.5 owns the verify and resend endpoints and must not be implemented in 2.4 |
+| 2 | **Registration rate limiting is NOT mandated.** API §22's list omits registration; Epic 20 owns authentication rate limiting; no throttle config exists in the codebase | **Do NOT add registration rate limiting.** Inventing a throttle would add an unapproved requirement. Recorded as a known, accepted exposure until Epic 20 |
+| 3 | **Anti-enumeration on registration appears only in CLAUDE.md §19** — the lowest-precedence document, which self-declares it adds no requirements. API §130 is silent, while §188 (resend) and §321 (forgot) state it explicitly | Use **generic anti-enumeration behaviour**. A duplicate registration must not reveal whether the email exists, must not create a second user, and must **not** return `CONFLICT`. The documented response leaks nothing — no id, no email echo |
+| 4 | **The API §2 error envelope was never implemented.** `backend/common/exceptions/__init__.py` is 0 bytes; PROGRESS.md recorded it deferred to a "later API/error-handling Story". Story 2.4 is the first endpoint, so DRF's default error shape would ship a contract violation | **Approved as Stream C** — implement the documented §2 envelope now. Only the documented error codes; no invented codes or semantics |
+
+**Also resolved:** registration returns **HTTP 201 Created** (the API spec gives no status code).
+Registration creates **`User` only** — no `CoachProfile`, since the Blueprint flow says "Create
+User" and the request carries no profile fields.
+
+**Worker assignment for 2.4:** A → Codex (serializer/view/URL wiring, hardest); B → AGY
+(independent API tests); C → AGY in a **separate** isolated worktree and session (error envelope).
+**OpenCode stays idle by explicit decision** — the error envelope is cross-cutting and inherited by
+every future endpoint, so it was assigned to the safer worker rather than handed to the lightest
+one to keep it busy.
 
 **Parallelism outlook for 2.4.** Unlike 2.1–2.3, this Story has genuinely separable layers —
 serializer/validation, view/URL wiring, and tests — but they are **coupled through the API
