@@ -30,8 +30,8 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
-| **Current Story** | Story 1.8 — CI Pipeline — **IN PROGRESS** (workflow rebuilt and verified locally; PR run still required) |
-| **Overall status** | Epic 01 in progress — **7 of 8 Stories complete**; Story 1.8 in progress |
+| **Current Story** | Story 1.8 — CI Pipeline — **COMPLETE and accepted** (2026-08-16) |
+| **Overall status** | ✅ **EPIC 01 — Project Foundation COMPLETE — 8 of 8 Stories.** Epic 02 not started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-15 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -587,9 +587,16 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
+**No Story currently in progress.** Epic 01 is complete; Epic 02 has not been started.
+
+---
+
+## Completed — Story 1.8
+
 ### Story 1.8 — CI Pipeline  (Epic 01 — Project Foundation)
 
-**Status:** IN PROGRESS. **NOT complete, NOT accepted.**
+**Status:** ✅ **COMPLETE** — DoD satisfied by a real passing GitHub Actions pull-request run, and
+**explicitly accepted by the user on 2026-08-16**. PR #1 merged.
 
 **Acceptance / DoD (Blueprint §6, verbatim):** *"Pull requests automatically run required checks."*
 This DoD requires a **real GitHub pull-request workflow run**. It cannot be satisfied by local
@@ -778,9 +785,64 @@ should be fixed by `5719c2c` too. **Not verified** — the image was not rebuilt
 
 ---
 
-**Remaining to finish Story 1.8 (NOT yet done, requires explicit approval):** observe a **real**
-GitHub Actions pull-request run pass end to end, then merge PR #1. Until that run passes, the DoD
-is unmet and the Story stays IN PROGRESS.
+---
+
+#### ✅ DoD satisfied — the accepted GitHub Actions run
+
+Blueprint DoD: *"Pull requests automatically run required checks."*
+
+| Field | Value |
+|---|---|
+| Run | [31952441965](https://github.com/momenawab/Fitops/actions/runs/31952441965) — **conclusion: success** |
+| Event | `pull_request` → base `main` |
+| Tested merge | `64b4017` = *Merge `4c8a6f8` into `09b6dc2`* (confirmed in the checkout log) |
+| Steps | all 9 **success**, **none skipped** |
+
+Gate output captured from the run:
+
+```
+==> backend: ruff check              PASS
+==> backend: ruff format --check     PASS
+==> backend: django tests            PASS (3 test(s) collected)
+==> frontend: npm run lint           PASS
+==> frontend: npm run typecheck      PASS
+==> frontend: npm test               PASS
+==> frontend: npm run format:check   PASS
+All 7 gates passed.
+```
+
+Plus the separate build step: `✓ Compiled successfully in 4.4s`, 4 static pages.
+PostgreSQL: `postgres:16` pulled, health-checked with `pg_isready -U fitops -d fitops`, reported
+**"postgres service is healthy"**, and Django's tests ran against it. The `3 test(s) collected`
+line is the zero-test guard confirming tests genuinely executed.
+
+**Note on runs 1–2.** Both failed at `npm ci`. Run 1 exposed the real lockfile defect (fixed in
+`5719c2c`). Run 2 failed **identically because it tested the wrong commit** — its checkout log
+showed `HEAD is now at d77cac8 Merge 4c8a6f8 into 2cb7539`, the *old* base. GitHub recomputes
+`refs/pull/N/merge` lazily after the base moves, so an event fired too soon carries a stale merge
+SHA. **Always confirm which merge commit a run checked out before interpreting a failure.** No
+workflow change was ever made to force a green run.
+
+---
+
+#### Merge and final verification
+
+PR #1 merged on 2026-08-16 with the repository's default merge-commit method (no force-push,
+no workflow modification).
+
+| Check | Result |
+|---|---|
+| PR #1 merged | ✅ `merged=true`, `merge_commit_sha=e96e8be` |
+| `origin/main` | ✅ `e96e8bea879622f3151be64653d3d3a96a8f1ff5` (ls-remote **and** API) |
+| Merge parents | `09b6dc2` + `4c8a6f8` |
+| CI workflow on `main` | ✅ blob `83ac73223d9a19d8f17b44bc981dac8cd63ec4de` |
+| PR scope after merge | ✅ still `changed_files=1, +88, -0` — only `.github/workflows/ci.yml` |
+| `git diff 09b6dc2..main` | ✅ `A .github/workflows/ci.yml` — **nothing else introduced** |
+| Lockfile unchanged by merge | ✅ `bee224f5325cdaa2f99ed5cc2ff9ee10ab8ad8ba` |
+| Gates on merged `main` | ✅ `checks.sh` exit 0, all 7 PASS |
+
+**Story 1.8 is COMPLETE.** CI now runs the seven-gate baseline plus a production build on every
+pull request targeting `main`.
 
 ---
 
@@ -986,52 +1048,51 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 
 ## Next
 
-| Field | Value |
-|---|---|
-**Immediate next action — finish the CURRENT Story (1.8), not a new one.**
-
-Story 1.8's workflow is rebuilt, verified locally and committed. Its DoD —
-*"Pull requests automatically run required checks"* — is **still unmet**, because it requires a
-**real GitHub Actions pull-request run**.
-
-Remaining steps, **each requiring explicit user approval** (Master must not push or open a PR on its
-own initiative):
-
-1. Push a branch carrying the workflow commit.
-2. Open a pull request against `main`.
-3. Verify the PR diff is exactly `.github/workflows/ci.yml`.
-4. Wait for and **inspect the real Actions run** — a green tick is not enough; confirm the seven
-   gates and the build step actually executed.
-5. **Do not merge without separate explicit approval.**
-
-Known risk to watch on the first real run: the workflow pins **Python 3.14** and **Node 24**. If a
-runner image cannot provide either, the run fails on setup rather than on a genuine defect — read
-the log before concluding the pipeline is wrong.
-
-**After Story 1.8 is accepted:**
+> ⚠️ **There is no Story 1.9.** Epic 01 ends at Story 1.8. Verified against
+> `docs/03-development/fitops_development_blueprint_v1.md`: `# 6. EPIC 01 — Project Foundation`
+> contains Stories **1.1 – 1.8** only, and is immediately followed by
+> `# 7. EPIC 02 — Authentication & Identity` beginning at `## Story 2.1 — Custom User Model`.
+> **Epic 01 is COMPLETE (8 of 8).** The next Story is **2.1**, not 1.9.
 
 | Field | Value |
 |---|---|
 | **Epic** | Epic 02 — Authentication & Identity |
-| **Story ID** | Story 2.1 |
+| **Story ID** | **Story 2.1** |
 | **Story title** | Custom User Model |
 
-**Do NOT start Epic 02 automatically — user approval required.** Epic 02 is the first Epic that
-creates real models and migrations, so re-read the Database & Auth Architecture before any code.
+**Do NOT start Epic 02 automatically — user approval required.**
+
+**Notes before starting Story 2.1:**
+
+1. Epic 02 is the **first Epic that creates real models and migrations**. Re-read the Database &
+   Auth Architecture and the ERD **before writing any code** — do not add fields from memory.
+2. The locked identity model: `User` is **global** with `platform_role ∈ {NONE, ADMIN}`. Coach and
+   Client roles come from **`Membership`**, never from `User`. There is **no** `UserSession` model
+   and **no** `token_hash` architecture — Django's session framework only.
+3. `ClientProfile` is global identity and **must not** carry `workspace_id`.
+4. CI now runs on every PR to `main`. Expect the seven gates plus the production build to gate all
+   Epic 02 work, and expect new models to require tests.
+5. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Epic 02; B24–B27 belong to
+   Epic 22. Stop and ask if implementation reaches one.
 
 **Carry-ins still live:**
 
 1. **`next-env.d.ts` churn** — `next dev` and `next typegen` write different contents to that file.
-   The committed workflow deliberately adds **no** clean-tree assertion, so it does not trip. Still
+   The merged workflow deliberately adds **no** clean-tree assertion, so it does not trip. Still
    **unresolved** as a general matter; `npm run build` was verified **not** to modify the file
    (blob `ce4e94a6b10f160ee021fe18939af160d2927dcf` unchanged).
 2. **Zero-test trap** — guarded inside `checks.sh`, which the workflow invokes. If any future CI
    step calls Django directly instead of through the script, it **must** reproduce the guard.
-3. **Blueprint tracking marker** — Stories 1.2–1.6 carry `✅ COMPLETE (date)` headings in
-   `docs/03-development/fitops_development_blueprint_v1.md`, but **Story 1.7 does not**, despite
-   being complete and user-accepted. Pure tracking housekeeping in an architecture document;
-   **not applied — awaiting explicit approval.**
-5. Backend dev dependencies come from `backend/requirements-dev.txt`; frontend from `npm ci`.
+3. **Cross-platform lockfile** — whenever `frontend/package-lock.json` changes, verify `npm ci` on
+   **both** macOS and the Linux target before committing. A lockfile verified only on the
+   development host is not verified. This class has now broken the build **twice** (Stories 1.6
+   and 1.7).
+4. **Docker frontend build** — `infrastructure/docker/frontend.Dockerfile:6` runs the same
+   `npm ci`, so `5719c2c` probably repaired it too. **Not verified** — the image was not rebuilt.
+5. **Blueprint tracking marker** — Stories 1.1–1.6 and now 1.8 carry `✅ COMPLETE (date)` headings
+   in `docs/03-development/fitops_development_blueprint_v1.md`, but **Story 1.7 still does not**,
+   despite being complete and user-accepted. Pure tracking housekeeping in an architecture
+   document; **not applied — still awaiting explicit approval.**
 
 ---
 

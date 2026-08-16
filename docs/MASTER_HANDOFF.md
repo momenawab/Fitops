@@ -636,16 +636,21 @@ Codex must **not**:
 ## 14. Final Handoff Snapshot
 
 ```
-CURRENT_EPIC:          Epic 01 — Project Foundation
-CURRENT_STORY:         Story 1.7 — Testing and Quality Baseline
-CURRENT_STORY_STATUS:  COMPLETE — accepted by the user 2026-08-15
-LAST_ACCEPTED_STORY:   Story 1.7
+CURRENT_EPIC:          Epic 01 — Project Foundation — ✅ COMPLETE (8 of 8 Stories)
+CURRENT_STORY:         none in progress
+CURRENT_STORY_STATUS:  Story 1.8 COMPLETE — accepted by the user 2026-08-16; PR #1 merged
+LAST_ACCEPTED_STORY:   Story 1.8 — CI Pipeline
 CURRENT_BRANCH:        main
-CURRENT_HEAD:          476653d334e856c333fd26cb15d51c45b86b6692
-                       (re-verify: this handoff commit will advance HEAD)
-WORKTREE_CLEAN:        YES — git status --porcelain empty; no extra worktrees; no temp branches
-REMOTE_STATE:          origin/main behind local main by 14 commits — NOTHING PUSHED
-NEXT_STORY:            Story 1.8 — CI Pipeline  (NOT STARTED — requires explicit user approval)
+CURRENT_HEAD:          e96e8bea879622f3151be64653d3d3a96a8f1ff5
+                       (re-verify: the commit recording this update will advance HEAD)
+WORKTREE_CLEAN:        YES — git status --porcelain empty; no extra worktrees
+REMOTE_STATE:          origin/main == local main == e96e8be — fully pushed and in sync
+CI_STATE:              GitHub Actions runs the 7-gate baseline + production build on every PR to
+                       main. Accepted run: 31952441965 (success).
+NEXT_STORY:            Story 2.1 — Custom User Model  (Epic 02 — Authentication & Identity)
+                       ⚠️ THERE IS NO STORY 1.9. Epic 01 ends at 1.8; the Blueprint goes straight
+                       from Story 1.8 to "# 7. EPIC 02" / "## Story 2.1".
+                       NOT STARTED — requires explicit user approval.
 CLAUDE_ROLE:           Master (planner, reviewer, verifier, committer, PROGRESS.md owner)
 FAILOVER_MASTER:       Codex — assumes full Master role, does not act as a worker
 DELEGATION_RULE:       very hard / hard → Codex | medium → AGY | lowest → OpenCode
@@ -656,10 +661,23 @@ AGY_PERMISSION_MODE:   persistent = command(git status) ONLY;
                        never write_file(*), never --dangerously-skip-permissions
 OPEN_DECISIONS:        B24, B25, B26, B27 (all Epic 22) + SMTP provider (blocks no Story)
                        — authoritative registry: docs/MISSING_DECISIONS.md
-CRITICAL_CARRY_INS:    1. next-env.d.ts churn (next dev vs next typegen) — UNRESOLVED, decide in 1.8
-                       2. manage.py test exits 0 with zero tests — guarded in checks.sh; CI must too
-                       3. "Build validation" is in Story 1.8 scope but is NOT a current checks.sh gate
-                       4. local main is 14 commits ahead of origin — do not push without approval
+CRITICAL_CARRY_INS:    1. next-env.d.ts churn (next dev vs next typegen) — STILL UNRESOLVED; the
+                          merged workflow adds no clean-tree assertion, so it does not trip
+                       2. manage.py test exits 0 with zero tests — guarded in checks.sh, which CI
+                          invokes; any future step calling Django directly must reproduce the guard
+                       3. CROSS-PLATFORM LOCKFILE — whenever frontend/package-lock.json changes,
+                          run `npm ci` on BOTH macOS and the Linux target before committing. A
+                          lockfile verified only on the dev host is NOT verified. This class has
+                          broken the build twice (Stories 1.6 and 1.7); fixed in 5719c2c by
+                          regenerating inside node:24-slim on linux/amd64.
+                       4. Docker frontend build (frontend.Dockerfile:6 runs the same npm ci) was
+                          probably repaired by 5719c2c — NOT VERIFIED, image not rebuilt
+                       5. Blueprint Story 1.7 still lacks its "✅ COMPLETE (date)" heading marker
+                          that 1.1–1.6 and 1.8 carry — housekeeping, awaiting explicit approval
+                       6. GitHub recomputes refs/pull/N/merge LAZILY after the base branch moves.
+                          An event fired too soon can carry a stale merge SHA and silently re-test
+                          the OLD base. Always confirm the run's "HEAD is now at <sha> Merge <head>
+                          into <base>" checkout line before interpreting a CI failure.
 WORKERS_ACTIVE:        NONE (Antigravity processes in `ps` are the user's IDE — do not kill)
 ```
 

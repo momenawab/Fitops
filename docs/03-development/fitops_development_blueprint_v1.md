@@ -452,7 +452,7 @@ All baseline checks can run locally.
 
 ---
 
-## Story 1.8 — CI Pipeline
+## Story 1.8 — CI Pipeline — ✅ COMPLETE (2026-08-16)
 
 ### Tasks
 
