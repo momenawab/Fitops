@@ -30,8 +30,8 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | **Epic 03 — Workspace & Multi-Tenancy** |
-| **Current Story** | Story 3.1 — Workspace Model — **COMPLETE and merged** (2026-08-17) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. **Epic 03 in progress — Story 3.1 complete**; Story 3.2 NOT started |
+| **Current Story** | Story 3.2 — Membership Model — **COMPLETE and merged** (2026-08-17) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. **Epic 03 in progress — Stories 3.1 and 3.2 complete**; Story 3.3 NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-17 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -587,7 +587,131 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 3.1 is complete and merged; Story 3.2 (Membership Model) has not started. Story 2.8 remains DEFERRED until Epic 03 delivers Workspace + Membership.
+**No Story currently in progress.** Story 3.2 is complete and merged; Story 3.3 (Workspace Resolution) has not started. Workspace and Membership now both exist, so Story 2.8 and the `/auth/me` Role field are unblocked — but neither is part of Story 3.3.
+
+---
+
+## Completed — Story 3.2
+
+### Story 3.2 — Membership Model  (Epic 03 — Workspace & Multi-Tenancy)
+
+**Status:** ✅ **COMPLETE** — **PR #12 merged as `c9f944acf471eac5a7322cabb5e6df199e9b77c7`** on
+2026-08-17. Verified: `origin/main` and local `main` both equal that SHA, and the merged diff
+contained exactly the ten intended files.
+
+**Scope: model only.** No endpoints, serializers or permissions. `POST /api/v1/workspace` — which
+creates a Workspace **and** the creator's OWNER Membership in one transaction (API §6) — is a later
+Story.
+
+**`Membership` lives in the `accounts` app**, where the ERD lists it (`User, CoachProfile,
+ClientProfile, CoachSecurity, Membership, LoginOTP`) — **not** in `workspaces`, despite the name.
+
+**Implemented — exactly the eight fields listed IDENTICALLY in DB & Auth Architecture §7 and the
+ERD** (the two documents agree, so there was no conflict to resolve):
+
+```text
+id, workspace, user, role, status, joined_at, created_at, updated_at
+```
+
+**DECISION 50 (Blueprint §2C) — `status` = `ACTIVE` / `INACTIVE`, default `ACTIVE`.**
+
+This is a **project decision approved by the user on 2026-08-17**, **not** a documented requirement.
+No authoritative source specifies `Membership.status` values. The omission is conspicuous rather
+than incidental: `Workspace` §6 carries an explicit `Statuses:` block, while `Membership` §7 carries
+`Constraint:` and `Roles:` blocks but **no** `Statuses:` block — yet tenant security gates on an
+**"active Membership"** in API §57, §59 and §2031, DB §1713 and CLAUDE.md §10 rule 5. The field is
+therefore security-load-bearing with undocumented values. Two values cover every documented
+behaviour; a richer lifecycle (`PENDING`, `REMOVED`) would have invented an invitation/removal flow
+that appears in no approved document and that no Phase 1 endpoint would ever set.
+
+**Roles — exactly `OWNER`, `COACH`, `CLIENT`, with NO default** (a role must always be stated
+explicitly). ⛔ **`ASSISTANT_COACH` is documented as a FUTURE role in both DB §7 and the ERD and is
+deliberately NOT implemented.** `test_assistant_coach_role_is_absent_from_role_choices` keeps it
+absent. **Do not add it in a later Story without an explicit decision.**
+
+**Constraint and relationships:**
+
+- **`UNIQUE(user, workspace)`** is a real database `UniqueConstraint`, not serializer validation.
+  Tests assert its **effect** (`IntegrityError`), never its name — names are implementer choices.
+  Confirmed in `sqlmigrate`:
+  `CONSTRAINT "accounts_membership_user_workspace_unique" UNIQUE ("user_id", "workspace_id")`.
+- **Both FKs are required (non-null) and `CASCADE`** — matching every existing FK to the user model
+  (`CoachProfile`, `ClientProfile`, `CoachSecurity`). Deleting a `User` or a `Workspace` deletes the
+  Membership.
+- **`joined_at` is `default=timezone.now`, NOT `auto_now_add`.** It is documented *separately* from
+  `created_at`, so it must be settable (allowing a backdated join); making the two identical would
+  render one redundant. `created_at` remains the immutable row-creation timestamp.
+- **The same user may hold different roles in different Workspaces** (OWNER in one, CLIENT in
+  another) — an explicit architectural property, covered by a dedicated test.
+
+**MASTER FIX DISCLOSED — `db_index=False` removed from both FKs.** Codex over-applied the brief's
+"no indexes beyond the documented UNIQUE constraint" instruction and set `db_index=False`, which
+*removes* Django's default FK indexes rather than merely refraining from adding new ones. That is a
+real defect in a multi-tenant system: the composite unique index covers `user` as its leading column
+but **not `workspace` alone**, while every tenant query filters by workspace and Workspace CASCADE
+deletes scan by `workspace_id`. There is no `db_index` precedent anywhere in the project. Django
+defaults were restored and the migration regenerated; `sqlmigrate` now shows both
+`accounts_membership_user_id_*` and `accounts_membership_workspace_id_*` indexes alongside the
+constraint.
+
+**SEVEN ACCEPTED TEST FILES UPDATED — and why this was mechanical, not a decision.** Adding
+`Membership` broke the exact-`accounts`-model-set architecture guards in
+`test_registration_api`, `test_email_verification_api`, `test_login_api`, `test_two_factor_api`,
+`test_session_api`, `test_password_reset_api` and `test_workspace_model`. **Those guards fired
+correctly** — the `accounts` model set genuinely changed, and `Membership` is a documented member of
+that app, so the only correct expected set is now five models. Unlike the Story 2.7 session-cookie
+question (which had two defensible readings and was escalated), there is no competing
+interpretation here. Every guard keeps its original purpose of proving no session, token or recovery
+model exists.
+
+**Migration evidence:**
+
+- `backend/apps/accounts/migrations/0005_membership.py`, generated by `makemigrations`.
+- Dependencies are correct: `('accounts', '0004_coachsecurity')` **and**
+  `('workspaces', '0001_initial')`.
+- Applied against **real PostgreSQL 16**: `Applying accounts.0005_membership... OK` (exit **0**).
+- Repo-wide `makemigrations --check --dry-run` exits **0** afterwards.
+
+**Master-run, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / dev / prod | **0** / **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** |
+| `migrate` (real PostgreSQL 16) | **0** — `accounts.0005_membership` applied |
+| Focused Story 3.2 tests | **0** — 25 pass |
+| Full suite | **0** — **264 tests** pass |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **0** |
+| GitHub Actions CI | **success** — run `32035552924` |
+
+**CI evidence.** The run log reads `Merge f1530b1be535… into 2fa2bdbc5c9d…` — the live PR head into
+the live base, so CI tested the actual merge rather than a stale ref.
+
+**Mutation-checked — all four schema-consistent (migration regenerated each time):**
+
+| Mutation | Result |
+|---|---|
+| `UniqueConstraint` removed | duplicate-membership `IntegrityError` test fails |
+| `ASSISTANT_COACH` role added | **both** role guards fail |
+| `status` default flipped to `INACTIVE` | default + choices tests fail |
+| user FK `CASCADE` → `PROTECT` | cascade + FK contract tests fail |
+
+`models.py` restored **byte-identical** after every mutation, verified against a baseline stored
+outside the working tree (the Story 3.1 lesson applied).
+
+**MUTATION LESSON REINFORCED.** The first `ASSISTANT_COACH` mutation added the role **without**
+raising `role`'s `max_length`, so Django's system check rejected it
+(`fields.E009: 'max_length' is too small`) and **the test suite never ran** — while still exiting
+non-zero, which superficially *looked* like detection. Re-running it with `max_length` raised so
+`manage.py check` passed produced the real signal: both role guards fired. **A non-zero exit is not
+evidence of detection — confirm the intended test actually failed for the intended reason.**
+
+**Delegation.** Codex (model + migration) ∥ AGY (25 tests) ran in parallel on disjoint files.
+GLM-5.3 was correctly left idle. Master edits beyond the `db_index` fix were cosmetic only: line
+wraps and shortened docstrings created by the seven-file guard propagation.
+
+**Next Story:** 3.3 — Workspace Resolution.
 
 ---
 
@@ -2254,64 +2378,58 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 | Field | Value |
 |---|---|
 | **Epic** | Epic 03 — Workspace & Multi-Tenancy |
-| **Story ID** | **Story 3.2** |
-| **Story title** | Membership Model |
+| **Story ID** | **Story 3.3** |
+| **Story title** | Workspace Resolution |
 
-**Do NOT start Story 3.2 automatically — user approval required. No implementation has begun.**
+**Do NOT start Story 3.3 automatically — user approval required. No implementation has begun.**
 
-**Blueprint §8 Story 3.2, verbatim:**
+**Blueprint §8 Story 3.3, verbatim:**
 
 ```
-## Story 3.2 — Membership Model
+## Story 3.3 — Workspace Resolution
 
-Create:
+Implement server-side resolution:
 
-Membership
+URL slug -> Workspace -> Authenticated User -> Membership -> Workspace Context
 
-Fields include `joined_at`.
+This applies to the Coach dashboard routes (/{workspaceSlug}/dashboard, /{workspaceSlug}/clients,
+/{workspaceSlug}/orders, ...) as well as the public and Client portals.
 
-Roles:
-
-OWNER
-COACH
-CLIENT
-
-Constraint:
-
-UNIQUE(user_id, workspace_id)
+Never trust Workspace IDs from the frontend.
 ```
 
-**Notes before starting Story 3.2 — carried from Story 3.1:**
+**Notes before starting Story 3.3 — carried from Story 3.2:**
 
-1. **Read the authoritative Membership field list** in Database & Auth Architecture §7 and the ERD
-   before writing the model. Story 3.1 confirmed those two documents agree byte-for-byte on
-   `Workspace`; verify the same for `Membership` rather than assuming it.
-2. **`UNIQUE(user_id, workspace_id)`** is explicit in the Blueprint — implement it as a real database
-   constraint, not merely `unique_together` in a serializer, and test it raises `IntegrityError`.
-3. **Roles are exactly OWNER | COACH | CLIENT.** `ASSISTANT_COACH` is a future role — **do not
-   implement it**. Use a `TextChoices` class as `Workspace.Status` does.
-4. **`Membership` is the tenant-scoped identity** used by workspace-scoped business records: a
-   `client_id` on such a record is an FK to `Membership(role=CLIENT)`, and `coach_id` to
-   `Membership(role in {OWNER, COACH})` — not to `User` or `ClientProfile`.
-5. **`ClientProfile` must never gain a `workspace_id`** — it is global identity. The Client↔Workspace
-   link is expressed only through `Membership(role=CLIENT)`.
-6. **`Workspace` has no owner FK** (Story 3.1 decision, guarded three ways). Ownership arrives with
-   `Membership(role=OWNER)` in this Story. Do not add an owner field to `Workspace` retroactively.
-7. **Once Membership exists, two deferred items become buildable** — but neither is part of Story
-   3.2: **Story 2.8** (Client OTP) and the **`Role` field on `GET /auth/me`** omitted in Story 2.9.
-8. **Model-only Story.** `POST /api/v1/workspace` — which creates the Workspace *and* the OWNER
-   Membership in one transaction (API §6) — is a later Story. Do not add endpoints here.
-9. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 3.2.
+1. **This is the highest-risk Story of Epic 03.** CLAUDE.md §10 lists ten non-negotiable isolation
+   rules. Read them, plus API §25's seventeen security rules, before designing anything.
+2. **Never trust a frontend-supplied `workspace_id`.** Resolve the Workspace from the **URL slug**
+   server-side, then verify the caller's `Membership` and role.
+3. **Unauthorized lookups must return NO RESULT, never a signal that the object exists** (DB §26).
+   A 404-vs-403 distinction that reveals existence is a defect, not a UX choice.
+4. **Client access requires TWO checks** (DB §27, API §28): an **active** Membership in the
+   requested Workspace, **and** the resource belonging to that Client *and* that Workspace.
+5. **"Active Membership" now has a concrete meaning** — `Membership.status == "ACTIVE"`
+   (Blueprint §2C decision 50). Resolution must check status, not merely the row's existence.
+6. **`Membership` is the authoritative source of workspace-scoped role.** Do not derive role from
+   `User`, and do not add role to any global identity model.
+7. **`common/` is shared infrastructure, not a Django app.** Middleware, tenant context and
+   permission classes belong there. Note Story 3.4 owns the reusable tenant-query utilities, so keep
+   3.3 to resolution itself and avoid pre-building 3.4.
+8. ⚠️ **A 401 needs an `APIException` subclass, not `AuthenticationFailed`** — DRF coerces 401 → 403
+   under `SessionAuthentication`. This has cost rework in Stories 2.6 and 2.7.
+9. **Unblocked but NOT part of Story 3.3:** Story 2.8 (Client OTP) and the `Role` field omitted from
+   `GET /auth/me` in Story 2.9. Both now have their prerequisites but need their own Stories.
+10. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 3.3.
 
 **Epic 03 dependency graph (Blueprint §8) is strictly sequential:**
-3.1 Workspace ✅ → **3.2 Membership** → 3.3 Workspace Resolution → 3.4 Tenant Query Infrastructure →
-3.5 Tenant Isolation Tests. No later Story can be pulled forward.
+3.1 Workspace ✅ → 3.2 Membership ✅ → **3.3 Workspace Resolution** → 3.4 Tenant Query
+Infrastructure → 3.5 Tenant Isolation Tests.
 
-**Mutation-testing rules (learned in Story 3.1 — apply from now on):**
-take the baseline from the **immutable worker worktree**, never the live working tree; make each
-mutation **schema-consistent** (regenerate the migration) so it fails for the intended reason; and
-**re-run the full suite after restoring**, verifying the restored file's sha256 against the worktree
-source of truth.
+**Mutation-testing rules (Stories 3.1–3.2 — apply from now on):**
+take the baseline from a copy stored **outside the working tree**, never the live tree; make every
+mutation **schema-consistent** (regenerate the migration, and keep `manage.py check` passing) so it
+fails for the intended reason; **a non-zero exit is not evidence of detection** — confirm the
+intended test actually failed; and re-run the full suite after restoring.
 
 
 **Carry-ins still live:**

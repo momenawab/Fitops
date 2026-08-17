@@ -122,6 +122,7 @@ documentation stated them before this entry.
 | 47 | **OTP expiry — exactly 10 minutes.** | DB Architecture says only "around 10 minutes", which is approximate wording rather than a contract. This decision ratifies it as an exact value. |
 | 48 | **Attempt exhaustion → `OTP_RATE_LIMITED` with HTTP 429.** No `OTP_ATTEMPTS_EXCEEDED` code is to be invented. | API §2's closed error-code list contains no code for attempt exhaustion, while the Blueprint requires an attempt limit. Inventing a code is forbidden, so exhaustion reuses an existing documented code. |
 | 49 | **`LoginOTP.user_id` is non-null.** | Neither DB Architecture nor the ERD annotates nullability. The documentation does flag nullability when intended (`Application.user_id` is explicitly nullable "because an application can precede any Membership"); no such note exists for `LoginOTP`. Non-null composes correctly with the mandated anti-enumeration behaviour: no `User` means no OTP row, and the endpoint still returns a generic success. |
+| 50 | **`Membership.status` = `ACTIVE` / `INACTIVE`, default `ACTIVE`.** | No authoritative document specifies `Membership.status` values. `Workspace` §6 carries an explicit `Statuses:` block; `Membership` §7 carries `Constraint:` and `Roles:` blocks but no equivalent — while tenant security (API §57, §59, §2031; DB §1713; CLAUDE.md §10 rule 5) gates on an "active Membership". Two values cover every documented behaviour; richer lifecycles such as `PENDING`/`REMOVED` would invent an invitation/removal flow no document describes. |
 
 Rate limits 44 and 45 were chosen for this flow specifically. They are **not** derived from the
 `login` (10/minute) or `email_resend` (3/minute) scopes, which govern unrelated flows.
@@ -795,7 +796,21 @@ with:
 
 ---
 
-## Story 3.2 — Membership Model
+## Story 3.2 — Membership Model — ✅ COMPLETE (2026-08-17)
+
+**`Membership` lives in the `accounts` app**, where the ERD lists it — not `workspaces`.
+
+**Roles are exactly `OWNER`, `COACH`, `CLIENT`, with no default.** **`ASSISTANT_COACH` is
+future-only in both authoritative documents and must NOT be implemented.**
+
+**`Membership.status` = `ACTIVE` / `INACTIVE`, default `ACTIVE` — project decision approved
+2026-08-17 (see §2C decision 50).** No authoritative document specifies the values, yet tenant
+security gates on an "active Membership".
+
+`UNIQUE(user, workspace)` is a real database `UniqueConstraint`. Both FKs are required and
+`CASCADE`. `joined_at` is `default=timezone.now` (settable), deliberately distinct from the
+immutable `created_at`.
+
 
 Create:
 
