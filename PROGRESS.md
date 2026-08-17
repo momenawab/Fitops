@@ -29,10 +29,9 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | Epic 01 — Project Foundation |
-| **Current Epic** | Epic 02 — Authentication & Identity |
-| **Current Story** | Story 2.10 — Password Reset — **COMPLETE and merged** (2026-08-17). Story 2.8 DEFERRED (Epic 03) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 — Stories 2.1–2.7, 2.9 and 2.10 complete; 2.8 DEFERRED to Epic 03.** Epic 02 is complete except 2.8 |
+| **Current Epic** | **Epic 03 — Workspace & Multi-Tenancy** |
+| **Current Story** | Story 3.1 — Workspace Model — **COMPLETE and merged** (2026-08-17) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. **Epic 03 in progress — Story 3.1 complete**; Story 3.2 NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-17 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -588,7 +587,117 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 2.10 is complete and merged; Story 2.8 is DEFERRED until Epic 03. Epic 02 is finished apart from 2.8; Epic 03 is next.
+**No Story currently in progress.** Story 3.1 is complete and merged; Story 3.2 (Membership Model) has not started. Story 2.8 remains DEFERRED until Epic 03 delivers Workspace + Membership.
+
+---
+
+## Completed — Story 3.1
+
+### Story 3.1 — Workspace Model  (Epic 03 — Workspace & Multi-Tenancy)
+
+**Status:** ✅ **COMPLETE** — **PR #11 merged as `9eb59e3f73ee432e4d7c8b34d1629aeb73a03f26`** on
+2026-08-17. Verified: `origin/main` and local `main` both equal that SHA, and the merged diff
+introduced exactly the three intended files.
+
+**Scope: model only.** No endpoints, serializers or permissions, and no `Membership`,
+`WorkspaceArchive`, `PaymentMethod` or `CheckInSchedule` — all later Stories.
+
+**Implemented — exactly the thirteen fields listed IDENTICALLY in DB & Auth Architecture §6 and the
+ERD** (the two documents agree byte-for-byte, so there was no conflict to resolve):
+
+```text
+id, name, slug, logo, profile_image, description, brand_color,
+currency, timezone, whatsapp_number, status, created_at, updated_at
+```
+
+**ARCHITECTURAL DECISION — there is NO `owner` / `owner_id` field on `Workspace`.**
+
+Ownership is expressed through **`Membership(role=OWNER)`**, which is Story 3.2. Neither
+authoritative document lists an owner FK. Adding one is the single most plausible wrong
+"improvement" on this model, because it looks natural and would quietly create a second, competing
+source of truth for ownership alongside `Membership`. It is therefore guarded **three independent
+ways**:
+
+1. field-name **set equality** on the thirteen concrete fields;
+2. an explicit `owner` / `owner_id` **absence** assertion;
+3. an assertion that **no concrete field is a relation to `AUTH_USER_MODEL`** — the strongest form,
+   since it catches an owner FK under any other name.
+
+Mutation M1 confirmed **all three fire independently**. **Do not add an owner FK in any later
+Story.**
+
+**Other decisions (established conventions, not new):**
+
+- **UUID primary key**, matching `accounts.User` / `CoachProfile`.
+- **`slug` unique platform-wide** — it is the authoritative Workspace context in every
+  workspace-scoped URL, so uniqueness is a tenancy requirement, not a convenience.
+- **`status`** is a nested `TextChoices` limited to the two documented values `ACTIVE` and
+  `SUSPENDED`, defaulting to `ACTIVE`.
+- **`logo` and `profile_image` are `FileField`, NOT `ImageField`** — Pillow is deliberately not a
+  dependency, the same decision taken for `CoachProfile.profile_image` in Story 2.2.
+- Field **types** are not documented anywhere — only field *names* — so they follow the `accounts`
+  models' pattern. The tests deliberately assert **no** `max_length`, `upload_to`, `verbose_name` or
+  ordering values, because freezing implementer choices would invent contract that no document
+  states.
+
+**Migration evidence:**
+
+- `backend/apps/workspaces/migrations/0001_initial.py`, generated normally by `makemigrations`.
+- Applied against **real PostgreSQL 16**: `Applying workspaces.0001_initial... OK` (exit **0**).
+- Repo-wide `makemigrations --check --dry-run` exits **0** afterwards, proving nothing is pending.
+- The `workspaces` app previously had **no** models; it was already registered in `LOCAL_APPS`, so
+  no settings change was needed.
+
+**Master-run, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / prod | **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** |
+| `migrate` (real PostgreSQL 16) | **0** — `workspaces.0001_initial` applied |
+| Focused Story 3.1 tests | **0** — 18 pass |
+| Full suite | **0** — **239 tests** pass |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **0** |
+| GitHub Actions CI | **success** — run `32033313267` |
+
+**CI evidence.** The run log reads `Merge 991df436307a… into c7a9fec5e9d1…` — the live PR head into
+the live base, so CI tested the actual merge rather than a stale ref.
+
+**Mutation-checked — all four guards proven non-vacuous:**
+
+| Mutation | Result |
+|---|---|
+| `owner` FK added (**with a matching migration**) | all **3** no-owner guards fail |
+| `slug` loses `unique=True` | uniqueness + behaviour tests fail |
+| `logo` → `ImageField` | fails — Pillow is absent |
+| Undocumented `is_featured` field added | field-set equality fails |
+
+**LESSON RECORDED — two mutation-testing rules learned the hard way in this Story:**
+
+1. **A mutation must be schema-consistent, or it proves nothing.** The first `owner`-FK attempt added
+   the field **without** regenerating the migration. That produced `UndefinedColumn` errors across
+   15 unrelated tests and *masked* whether the intended guards fired at all. Re-running it with a
+   matching migration gave a clean signal. **A mutation that fails for the wrong reason is not
+   evidence.**
+2. **The mutation baseline MUST be taken from the immutable worker worktree, never from the live
+   working tree.** An aborted command (a zsh globbing error) applied a mutation and exited *before*
+   restoring; the next block then copied that already-mutated file as the "original" baseline.
+   Restoring from it silently reintroduced the `owner` field, surfacing as
+   `psycopg.errors.UndefinedColumn: column "owner_id" ... does not exist` in the full suite. It was
+   caught only because the **full suite was re-run after restoring** rather than trusting a
+   "byte-identical" check — which was true, but against a contaminated reference. The fix was to
+   restore from the Codex worktree copy and verify the sha256 matches the implementer's original,
+   plus clearing stale `__pycache__` holding a deleted `0002` migration. **Always diff the restored
+   file against the worktree source of truth, and always re-run the full suite after mutation
+   testing.**
+
+**Delegation.** Codex (model + migration) ∥ AGY (18 tests) ran in parallel on disjoint files. Both
+needed **zero** corrections to their output; the only Master edit was `ruff format` on one
+over-wrapped line in the test file. GLM-5.3 was correctly left idle — a model-only Story has no
+genuine third stream.
+
+**Next Story:** 3.2 — Membership Model.
 
 ---
 
@@ -2144,45 +2253,65 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 
 | Field | Value |
 |---|---|
-| **Epic** | **Epic 03 — Workspace & Multi-Tenancy** |
-| **Story ID** | Epic 03, first Story (read Blueprint §8 before planning) |
-| **Story title** | Workspace & tenant boundary |
+| **Epic** | Epic 03 — Workspace & Multi-Tenancy |
+| **Story ID** | **Story 3.2** |
+| **Story title** | Membership Model |
 
-**Do NOT start Epic 03 automatically — user approval required. No implementation has begun.**
+**Do NOT start Story 3.2 automatically — user approval required. No implementation has begun.**
 
-**Epic 02 status:** Stories 2.1–2.7, 2.9 and 2.10 are COMPLETE and merged. **Story 2.8 (Client OTP)
-is DEFERRED** — both its endpoints require `workspace_slug`, whose resolution needs `Workspace` and
-`Membership`. Epic 03 unblocks it. Its six resolved values are Blueprint §2C decisions 44–49.
+**Blueprint §8 Story 3.2, verbatim:**
 
-**Notes before starting Epic 03 — carried from Epic 02:**
+```
+## Story 3.2 — Membership Model
 
-1. **Epic 03 is the tenant boundary and the highest-risk Epic so far.** CLAUDE.md §10 lists ten
-   non-negotiable isolation rules. Blueprint Story 3.5 mandates tenant-isolation tests: Coach A
-   cannot reach Workspace B; Client A cannot reach Client B; a Client cannot reach their own data in
-   another Workspace without Membership there; orders/plans/check-ins cannot cross workspaces.
-2. **Never trust a frontend-supplied `workspace_id`.** Resolve the Workspace from the URL slug
-   server-side, then verify Membership and role. Unauthorized lookups must return **no result**,
-   never a signal that the object exists (DB §26).
-3. **`POST /api/v1/workspace` is transactional** — reserve slug → create Workspace → create OWNER
-   Membership → create `PlatformSubscription` in `TRIALING` with a 7-day trial → billing events →
-   audit event, all-or-nothing (API §6).
-4. **`Membership` carries `UNIQUE(user_id, workspace_id)`** and roles OWNER | COACH | CLIENT.
-   `ASSISTANT_COACH` is future — do not implement it.
+Create:
+
+Membership
+
+Fields include `joined_at`.
+
+Roles:
+
+OWNER
+COACH
+CLIENT
+
+Constraint:
+
+UNIQUE(user_id, workspace_id)
+```
+
+**Notes before starting Story 3.2 — carried from Story 3.1:**
+
+1. **Read the authoritative Membership field list** in Database & Auth Architecture §7 and the ERD
+   before writing the model. Story 3.1 confirmed those two documents agree byte-for-byte on
+   `Workspace`; verify the same for `Membership` rather than assuming it.
+2. **`UNIQUE(user_id, workspace_id)`** is explicit in the Blueprint — implement it as a real database
+   constraint, not merely `unique_together` in a serializer, and test it raises `IntegrityError`.
+3. **Roles are exactly OWNER | COACH | CLIENT.** `ASSISTANT_COACH` is a future role — **do not
+   implement it**. Use a `TextChoices` class as `Workspace.Status` does.
+4. **`Membership` is the tenant-scoped identity** used by workspace-scoped business records: a
+   `client_id` on such a record is an FK to `Membership(role=CLIENT)`, and `coach_id` to
+   `Membership(role in {OWNER, COACH})` — not to `User` or `ClientProfile`.
 5. **`ClientProfile` must never gain a `workspace_id`** — it is global identity. The Client↔Workspace
    link is expressed only through `Membership(role=CLIENT)`.
-6. **Once `Membership` exists, two deferred items become buildable:** Story 2.8 (Client OTP), and
-   the **`Role` field on `GET /auth/me`** deliberately omitted in Story 2.9. Neither should be
-   added before Epic 03 defines a workspace-scoped contract.
-7. ⚠️ **A 401 needs an `APIException` subclass, not `AuthenticationFailed`** — DRF coerces 401 → 403
-   under `SessionAuthentication`. This has cost rework in Stories 2.6 and 2.7.
-8. **`common/` is shared infrastructure, not a Django app** — `WorkspaceScopedModel`,
-   `WorkspacePermission`, `TenantQuerySet` and workspace middleware belong there.
-9. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Epic 03.
+6. **`Workspace` has no owner FK** (Story 3.1 decision, guarded three ways). Ownership arrives with
+   `Membership(role=OWNER)` in this Story. Do not add an owner field to `Workspace` retroactively.
+7. **Once Membership exists, two deferred items become buildable** — but neither is part of Story
+   3.2: **Story 2.8** (Client OTP) and the **`Role` field on `GET /auth/me`** omitted in Story 2.9.
+8. **Model-only Story.** `POST /api/v1/workspace` — which creates the Workspace *and* the OWNER
+   Membership in one transaction (API §6) — is a later Story. Do not add endpoints here.
+9. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 3.2.
 
-**Delegation note.** AGY's headless allow-rules must use the **wildcard** form — `read_file(*)`,
-`list_directory(*)`, `glob(*)`, `grep(*)` — with `write_file(<exact path>)` scoping writes. Path
-globs and bare tool names are both auto-denied. AGY **exits 0 even on total failure**, so always
-verify the worktree with `git status --porcelain` rather than trusting the exit code.
+**Epic 03 dependency graph (Blueprint §8) is strictly sequential:**
+3.1 Workspace ✅ → **3.2 Membership** → 3.3 Workspace Resolution → 3.4 Tenant Query Infrastructure →
+3.5 Tenant Isolation Tests. No later Story can be pulled forward.
+
+**Mutation-testing rules (learned in Story 3.1 — apply from now on):**
+take the baseline from the **immutable worker worktree**, never the live working tree; make each
+mutation **schema-consistent** (regenerate the migration) so it fails for the intended reason; and
+**re-run the full suite after restoring**, verifying the restored file's sha256 against the worktree
+source of truth.
 
 
 **Carry-ins still live:**

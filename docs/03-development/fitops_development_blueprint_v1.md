@@ -761,7 +761,17 @@ Build the tenant boundary.
 
 ---
 
-## Story 3.1 — Workspace Model
+## Story 3.1 — Workspace Model — ✅ COMPLETE (2026-08-17)
+
+**No `owner` field.** Ownership is expressed through `Membership(role=OWNER)` (Story 3.2). Database
+& Auth Architecture §6 and the ERD both list exactly thirteen fields and neither includes an owner
+FK. **Do not add one.**
+
+`slug` is unique platform-wide (it is the authoritative Workspace context in every workspace-scoped
+URL). `status` is a `TextChoices` field limited to the two documented values, defaulting to `ACTIVE`.
+`logo` and `profile_image` are **`FileField`, not `ImageField`** — Pillow is deliberately not a
+dependency (the Story 2.2 decision for `CoachProfile.profile_image`).
+
 
 Create:
 
