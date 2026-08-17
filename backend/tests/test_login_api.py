@@ -9,7 +9,7 @@ Validates:
 - Email verification enforcement (403 EMAIL_NOT_VERIFIED) and credential check precedence
 - CoachSecurity model schema contract, defaults, OneToOne CASCADE relation, and secret protection
 - Rate limiting on login (10 req/min, 429 RATE_LIMITED) and unthrottled registration
-- Architecture guard: accounts defines exactly {User, CoachProfile, ClientProfile, CoachSecurity}
+- Architecture guard: accounts defines exactly the five approved models
 """
 
 from django.apps import apps
@@ -754,10 +754,16 @@ class LoginArchitectureGuardTests(BaseLoginApiTestCase):
     """Verifies architectural constraints: exact approved models in accounts app."""
 
     def test_accounts_app_exposes_only_approved_models_and_no_session_or_token_model(self):
-        """Asserts accounts defines exactly {User, CoachProfile, ClientProfile, CoachSecurity}."""
+        """Asserts accounts defines exactly the five approved models."""
         accounts_app = apps.get_app_config("accounts")
         concrete_model_names = {model._meta.object_name for model in accounts_app.get_models()}
-        expected_model_names = {"User", "CoachProfile", "ClientProfile", "CoachSecurity"}
+        expected_model_names = {
+            "User",
+            "CoachProfile",
+            "ClientProfile",
+            "CoachSecurity",
+            "Membership",
+        }
         self.assertSetEqual(
             concrete_model_names,
             expected_model_names,
