@@ -701,7 +701,15 @@ The request must include the Workspace slug/context.
 
 ---
 
-## Story 2.9 — Sessions
+## Story 2.9 — Sessions — ✅ COMPLETE (2026-08-17)
+
+**Role decision (accepted 2026-08-17).** `GET /auth/me` returns user state, email verification
+state, 2FA state and `platform_role`. The **"Role"** return listed in API §4 is the
+workspace-scoped `Membership` role and is **intentionally deferred to Epic 03**. §4 itself states
+workspace context is resolved separately from the URL and is never inferred as a single global
+"current Workspace", so a global role field would contradict the same section that lists it.
+**Do not invent a global `Role` field and do not return a null/empty one.**
+
 
 Implement:
 

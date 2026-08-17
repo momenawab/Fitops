@@ -31,8 +31,8 @@
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
 | **Current Epic** | Epic 02 — Authentication & Identity |
-| **Current Story** | Story 2.9 — Sessions — starting. Story 2.8 DEFERRED (blocked by Epic 03) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Stories 2.1–2.7 complete**; Story 2.8 NOT started |
+| **Current Story** | Story 2.9 — Sessions — **COMPLETE and merged** (2026-08-17). Story 2.8 DEFERRED (Epic 03) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 — Stories 2.1–2.7 and 2.9 complete; 2.8 DEFERRED to Epic 03**; Story 2.10 NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-17 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -588,7 +588,94 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 2.7 is complete and merged; Story 2.8 has not started.
+**No Story currently in progress.** Story 2.9 is complete and merged; Story 2.8 is DEFERRED until Epic 03; Story 2.10 has not started.
+
+---
+
+## Completed — Story 2.9
+
+### Story 2.9 — Sessions  (Epic 02 — Authentication & Identity)
+
+**Status:** ✅ **COMPLETE** — **PR #9 merged as `256be5f62ed7b3d178df2000f925f057277b03f7`** on
+2026-08-17. Verified: `origin/main` and local `main` both equal that SHA.
+
+**Implemented — two endpoints (API §4):**
+
+| Route | Permission | Success |
+|---|---|---|
+| `GET /api/v1/auth/me` | `IsAuthenticated` | 200 — eight-key account state |
+| `POST /api/v1/auth/logout` | `IsAuthenticated` | 200 — session revoked |
+
+`/auth/me` returns exactly: `id`, `email`, `first_name`, `last_name`, `phone`, `email_verified`,
+`two_factor_enabled`, `platform_role`.
+
+**ACCEPTED DECISION — the `Role` field is intentionally deferred (2026-08-17).**
+
+API §4 lists a **"Role"** return. That role comes from `Membership`, which is workspace-scoped and
+does not exist in code until **Epic 03**. API §4 itself states that workspace context is resolved
+separately from the request URL and is **never inferred as a single global "current Workspace"**, so
+a global `Role` field would contradict the same section that lists it.
+
+`/auth/me` therefore returns user state, email-verification state, 2FA state and `platform_role`
+only. **Do not invent a global `Role` field, and do not return a null or empty one.** The field is
+added in Epic 03 once `Membership` exists and a workspace-scoped contract can be defined.
+`test_me_does_not_expose_a_role_key` asserts the key is **absent**, so re-adding it early fails
+loudly rather than silently shipping a wrong contract.
+
+**Security invariants now locked by tests:**
+
+1. **`email_verified` is a boolean**, derived from `email_verified_at is not None`. The raw
+   `email_verified_at` timestamp is **never** exposed in the response body.
+2. **`two_factor_enabled` is `false` when the user has no `CoachSecurity` row** (fallback via
+   `CoachSecurity.DoesNotExist`), `false` when the row exists with the flag off, `true` only when
+   genuinely enabled. `two_factor_secret` is **never** serialized.
+3. **`/auth/logout` actually terminates the Django session** — a 200 alone proves nothing, so the
+   test asserts a subsequent `/auth/me` on the same client is rejected.
+4. **`/auth/me` returns the caller's own identity only** — a second user's email and UUID must not
+   appear in the body.
+5. **Out of MVP scope and absent:** no `UserSession` model, no JWT, no `token_hash`, no session
+   listing (`GET /auth/sessions`), no per-session revocation. Tests assert those routes return 404,
+   and an architecture guard asserts `accounts` exposes exactly
+   `{User, CoachProfile, ClientProfile, CoachSecurity}`.
+
+**Master-run, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / prod | **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** — no model change, no migration |
+| Focused Story 2.9 tests | **0** — 21 pass |
+| Full suite | **0** — **192 tests** pass |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **0** |
+| GitHub Actions CI | **success** — run `32018502374` |
+
+**CI evidence.** The run log reads `Merge 7d748543a9f1… into 587e3cdb3c1c…` — the live PR head into
+the live base. CI tested the actual merge, not a stale ref.
+
+**Mutation-checked — all four guards proven non-vacuous:**
+
+| Mutation | Result |
+|---|---|
+| `logout` returns 200 without ending the session | **2 failures** |
+| `role` key re-added to the serializer | **2 failures** |
+| `email_verified` leaks the raw timestamp instead of a boolean | **2 failures** |
+| `two_factor_enabled` hardcoded to `false` | **1 failure** |
+
+`views.py` and `serializers.py` both restored **byte-identical** after every mutation.
+
+**Delegation deviation — disclosed.** The planned Codex ∥ AGY split **did not hold**. AGY never ran:
+four dispatches failed — one on an invalid `-y` flag (Master error) and three on headless permission
+denials for `read_file`, which path-scoped, then bare tool-name allow-rules both failed to satisfy.
+**Every failed run still exited 0**, so the worktree was checked each time rather than trusting the
+notification. `--dangerously-skip-permissions` was **not** used. Master wrote
+`backend/tests/test_session_api.py` instead, **deliberately before reading Codex's diff**, preserving
+authorship blind to the implementation. This is **weaker than AGY's independence**: Master also wrote
+the brief, so a blind spot in Master's reading of API §4 would appear in both the spec and the tests.
+Weigh the 21 tests accordingly. Codex's implementation needed **no** corrections (21/21 on first
+integration); Master's only edits were two `E501` wraps in the test file.
+
+**Next Story:** 2.10 — Password Reset.
 
 ---
 
@@ -1942,48 +2029,46 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 | Field | Value |
 |---|---|
 | **Epic** | Epic 02 — Authentication & Identity |
-| **Story ID** | **Story 2.8** |
-| **Story title** | Client OTP |
+| **Story ID** | **Story 2.10** |
+| **Story title** | Password Reset |
 
-**Do NOT start Story 2.8 automatically — user approval required. No implementation has begun.**
+**Do NOT start Story 2.10 automatically — user approval required. No implementation has begun.**
 
-**Blueprint §7 Story 2.8, verbatim:**
+**Blueprint §7 Story 2.10, verbatim:**
 
 ```
-## Story 2.8 — Client OTP
+## Story 2.10 — Password Reset
 
 Implement:
 
-POST /auth/client/request-code
-POST /auth/client/verify-code
+POST /auth/password/forgot
+POST /auth/password/reset
+
+Prevent account enumeration.
 ```
 
-(Read the full Blueprint entry before planning — the block above is the endpoint list only.)
+**Notes before starting Story 2.10 — carried from Story 2.9:**
 
-**Notes before starting Story 2.8 — carried from Story 2.7:**
+1. **Anti-enumeration is an explicit Story requirement** — `/auth/password/forgot` must always
+   return a generic success response whether or not the account exists (CLAUDE.md §19). Story 2.5's
+   resend endpoint is the established pattern; reuse it.
+2. **Rate limiting is mandatory** — API §22 lists "Password reset". The scoped-throttle pattern is
+   live. Pick rates only from an approved document, or ask; do not borrow the `login`,
+   `email_resend` or the Story 2.8 OTP rates decided in Blueprint §2C.
+3. **Story 2.5 already built a stateless single-use token** (`accounts/tokens.py`,
+   `EmailVerificationTokenGenerator` over `PasswordResetTokenGenerator`, uidb64 prefix, 10-minute
+   timeout, invalidated by a changing `email_verified_at`). Read it first — password reset is the
+   same shape and should not introduce a second token mechanism or a token model.
+4. ⚠️ **A 401 needs an `APIException` subclass, not `AuthenticationFailed`** — DRF coerces 401 → 403
+   under `SessionAuthentication`. This has cost rework in Stories 2.6 and 2.7.
+5. **Password validation already exists** — Story 2.4 raises `validate_password` errors dict-keyed
+   (`serializers.ValidationError({"password": [...]})`) so the §2 envelope emits `fields`. Match it.
+6. **Coach passwords only.** Clients have no password in Phase 1 — do not extend this flow to them.
+7. **Both endpoints are public** and need explicit `AllowAny`; the default is `IsAuthenticated`.
+8. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 2.10.
 
-1. **OTP must never be stored in plaintext.** CLAUDE.md §12 and Blueprint Epic 20 require:
-   hash the code, ~10-minute expiry, one-time use, max verification attempts, strict rate limiting,
-   and invalidation of the previous active OTP when a new one is generated.
-2. **`LoginOTP` is a documented model in `accounts`** (DB Architecture §2–§23) but does **not** yet
-   exist in code. Read the authoritative field list before creating it — do not add fields from
-   memory. This Story will need a migration, unlike Story 2.7.
-3. **Client OTP request/verify include `workspace_slug`** (API §5). This is the first auth endpoint
-   pair that is workspace-aware, but **`Workspace` and `Membership` do not exist yet** (Epic 03).
-   Resolve in preflight how far 2.8 can go without them, and surface it as a blocking decision
-   rather than inventing tenant logic.
-4. **Anti-enumeration is required** on the OTP request endpoint — always return a generic success
-   response (CLAUDE.md §19), exactly as Story 2.5's resend endpoint does. Reuse that pattern.
-5. **Rate limiting IS mandatory here**, unlike the 2FA endpoints — API §22 explicitly lists client
-   OTP request and client OTP verify. It controls email cost and abuse. The scoped-throttle pattern
-   is live; pick rates only from an approved document or ask.
-6. ⚠️ **A 401 needs an `APIException` subclass, not `AuthenticationFailed`** — DRF coerces 401 → 403
-   under `SessionAuthentication`. This has now cost rework in Stories 2.6 and 2.7.
-7. **Clients have no password and no 2FA in Phase 1.** Do not reuse the coach login view or the
-   pending-2FA session bridge — the flows are separate.
-8. **Documented error codes exist for this flow:** `INVALID_OTP`, `OTP_EXPIRED`, `OTP_RATE_LIMITED`.
-   Use them; invent none.
-9. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 2.8.
+**Story 2.8 remains DEFERRED** until Epic 03 provides `Workspace` and `Membership`. Its six
+resolved values are Blueprint §2C decisions 44–49.
 
 
 **Carry-ins still live:**
