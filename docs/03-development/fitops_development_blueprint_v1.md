@@ -876,7 +876,20 @@ Never trust Workspace IDs from the frontend.
 
 ---
 
-## Story 3.4 — Tenant Query Infrastructure
+## Story 3.4 — Tenant Query Infrastructure — ✅ COMPLETE (2026-08-17)
+
+Delivered **only** the three genuinely new pieces: `WorkspaceScopedModel` (abstract),
+`TenantQuerySet` (safe-by-default) and the object-ownership predicates.
+
+⛔ **Story 3.3 owns workspace resolution, the tenant context and the permission classes. They were
+imported and reused, never duplicated — do not rebuild them in any later Story.**
+
+**Fail closed:** every invalid input returns an **empty queryset**, never unfiltered rows and never
+an exception. `for_client()` requires membership present **AND** `status == ACTIVE` **AND**
+`role == CLIENT`, and additionally scopes by the membership's own workspace.
+
+**No migration and no schema change** — `WorkspaceScopedModel` is abstract.
+
 
 Create shared utilities for:
 
