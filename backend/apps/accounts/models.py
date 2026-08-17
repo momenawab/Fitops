@@ -5,6 +5,7 @@ import uuid
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
 from django.db import models
+from django.utils import timezone
 
 from .managers import UserManager
 
@@ -101,3 +102,48 @@ class CoachSecurity(models.Model):
     two_factor_secret = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class Membership(models.Model):
+    """A user's role and status within a workspace."""
+
+    class Role(models.TextChoices):
+        OWNER = "OWNER", "Owner"
+        COACH = "COACH", "Coach"
+        CLIENT = "CLIENT", "Client"
+
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active"
+        INACTIVE = "INACTIVE", "Inactive"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.ForeignKey(
+        "workspaces.Workspace",
+        related_name="memberships",
+        on_delete=models.CASCADE,
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="memberships",
+        on_delete=models.CASCADE,
+    )
+    role = models.CharField(max_length=6, choices=Role.choices)
+    status = models.CharField(
+        max_length=8,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+    )
+    joined_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "workspace"],
+                name="accounts_membership_user_workspace_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} @ {self.workspace}"

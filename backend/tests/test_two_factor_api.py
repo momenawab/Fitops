@@ -12,7 +12,7 @@ Validates:
 - Disable contract: valid code disables 2FA, wrong code leaves 2FA enabled
 - Sensitive TOTP secret non-leakage across all response bodies and headers
 - Standard validation error envelope (§2) for missing, blank, or invalid code payloads
-- Architecture guard: accounts defines exactly {User, CoachProfile, ClientProfile, CoachSecurity}
+- Architecture guard: accounts defines exactly the five approved models
 """
 
 import pyotp
@@ -778,10 +778,16 @@ class TwoFactorArchitectureGuardTests(BaseTwoFactorApiTestCase):
     """Verifies architectural constraints: exact approved models and schema in accounts app."""
 
     def test_accounts_app_exposes_only_approved_models_and_no_recovery_or_token_model(self):
-        """Asserts accounts defines exactly {User, CoachProfile, ClientProfile, CoachSecurity}."""
+        """Asserts accounts defines exactly the five approved models."""
         accounts_app = apps.get_app_config("accounts")
         concrete_model_names = {model._meta.object_name for model in accounts_app.get_models()}
-        expected_model_names = {"User", "CoachProfile", "ClientProfile", "CoachSecurity"}
+        expected_model_names = {
+            "User",
+            "CoachProfile",
+            "ClientProfile",
+            "CoachSecurity",
+            "Membership",
+        }
         self.assertSetEqual(
             concrete_model_names,
             expected_model_names,

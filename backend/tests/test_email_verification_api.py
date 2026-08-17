@@ -674,10 +674,16 @@ class EmailVerificationArchitectureGuardTests(BaseEmailVerificationTestCase):
     """Verifies architectural constraints: no token model in accounts app."""
 
     def test_accounts_app_exposes_only_approved_models_and_no_token_model(self):
-        """Asserts accounts defines {User, CoachProfile, ClientProfile}, no token model."""
+        """Asserts accounts defines the approved model set and no token model."""
         accounts_app = apps.get_app_config("accounts")
         concrete_model_names = {model._meta.object_name for model in accounts_app.get_models()}
-        expected_model_names = {"User", "CoachProfile", "ClientProfile", "CoachSecurity"}
+        expected_model_names = {
+            "User",
+            "CoachProfile",
+            "ClientProfile",
+            "CoachSecurity",
+            "Membership",
+        }
         self.assertSetEqual(
             concrete_model_names,
             expected_model_names,

@@ -9,7 +9,7 @@ Validates:
 - `/auth/me` returns the authenticated caller's data and never another user's
 - `/auth/logout` ends the session, so a subsequent `/auth/me` is rejected
 - Session listing and per-session revocation routes do not exist (out of Phase 1 scope)
-- Architecture guard: accounts defines exactly {User, CoachProfile, ClientProfile, CoachSecurity}
+- Architecture guard: accounts defines exactly the five approved models
 """
 
 from django.apps import apps
@@ -260,4 +260,7 @@ class AccountsArchitectureGuardTests(TestCase):
     def test_accounts_app_exposes_only_the_approved_models(self):
         """Asserts set equality so a UserSession or token model fails loudly."""
         names = {m.__name__ for m in apps.get_app_config("accounts").get_models()}
-        self.assertEqual(names, {"User", "CoachProfile", "ClientProfile", "CoachSecurity"})
+        self.assertEqual(
+            names,
+            {"User", "CoachProfile", "ClientProfile", "CoachSecurity", "Membership"},
+        )

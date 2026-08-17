@@ -287,7 +287,13 @@ class WorkspaceArchitectureGuardTests(TestCase):
         """Asserts accounts app remains untouched and exposes only its approved four models."""
         accounts_app = apps.get_app_config("accounts")
         concrete_model_names = {model._meta.object_name for model in accounts_app.get_models()}
-        expected_model_names = {"User", "CoachProfile", "ClientProfile", "CoachSecurity"}
+        expected_model_names = {
+            "User",
+            "CoachProfile",
+            "ClientProfile",
+            "CoachSecurity",
+            "Membership",
+        }
         self.assertSetEqual(
             concrete_model_names,
             expected_model_names,
