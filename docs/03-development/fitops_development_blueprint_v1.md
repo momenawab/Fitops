@@ -754,11 +754,18 @@ Prevent account enumeration.
 
 ---
 
-# 8. EPIC 03 — Workspace & Multi-Tenancy
+# 8. EPIC 03 — Workspace & Multi-Tenancy — ✅ COMPLETE (2026-08-17)
 
 ## Goal
 
 Build the tenant boundary.
+
+**All five Stories complete:** 3.1 Workspace Model · 3.2 Membership Model · 3.3 Workspace
+Resolution · 3.4 Tenant Query Infrastructure · 3.5 Tenant Isolation Tests.
+
+The tenant boundary is in place: slug-only resolution requiring `Workspace.status == ACTIVE` **and**
+`Membership.status == ACTIVE`, fail-closed tenant querysets, `Membership`-based ownership, and an
+isolation suite covering cross-workspace and same-workspace Client-vs-Client access.
 
 ---
 
@@ -902,7 +909,25 @@ Create shared utilities for:
 
 ---
 
-## Story 3.5 — Tenant Isolation Tests
+## Story 3.5 — Tenant Isolation Tests — ✅ COMPLETE (2026-08-17)
+
+**Test-only** — no production code, no model, no migration.
+
+**Client A vs Client B, same Workspace:** workspace scoping alone is NOT sufficient. Two Clients with
+ACTIVE `CLIENT` Memberships in the *same* Workspace both pass the workspace filter, so DB §27's
+"a Client must never access another Client's resources by changing an ID in the request" needs its
+own assertion. Covered by fetching another client's record **by primary key** through the first
+client's scoped queryset and asserting zero rows.
+
+**Deliberately NOT duplicated:** inactive-Membership denial is owned by **Story 3.3**, and
+fail-open/fail-closed queryset behaviour by **Story 3.4**. Both were verified still caught by the
+full suite.
+
+**Deferred:** `Order` (Epic 08), `TrainingPlan`/`NutritionPlan` (Epics 11–12) and `CheckIn`
+(Epic 14) do not exist yet, so their model-specific isolation assertions are deferred to those
+Epics. The generic contract — no `WorkspaceScopedModel` subclass leaks rows across Workspaces — is
+covered here via one test-only subclass. **No fake domain model was created.**
+
 
 Test:
 

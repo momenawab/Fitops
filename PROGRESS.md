@@ -29,9 +29,9 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | **Epic 03 — Workspace & Multi-Tenancy** |
-| **Current Story** | Story 3.4 — Tenant Query Infrastructure — **COMPLETE and merged** (2026-08-17) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. **Epic 03 in progress — Stories 3.1–3.4 complete**; Story 3.5 (final Epic 03 Story) NOT started |
+| **Current Epic** | ✅ **Epic 03 — Workspace & Multi-Tenancy — COMPLETE** (2026-08-17) |
+| **Current Story** | Story 3.5 — Tenant Isolation Tests — **COMPLETE and merged** (2026-08-17). Epic 03 finished |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ **Epic 03 COMPLETE (5/5)**. Epic 02 complete except DEFERRED Story 2.8. **Epic 04 NOT started** |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-17 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -587,7 +587,127 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 3.4 is complete and merged; Story 3.5 (Tenant Isolation Tests) has not started and is the final Epic 03 Story. Story 2.8 and the `/auth/me` Role field remain unblocked but each needs its own Story.
+**No Story currently in progress.** ✅ **Epic 03 is COMPLETE** — the tenant boundary is built and tested. Epic 04 (Coach Onboarding & Settings) has not started. Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+
+---
+
+## Completed — Story 3.5  ·  ✅ EPIC 03 COMPLETE
+
+### Story 3.5 — Tenant Isolation Tests  (Epic 03 — **final Story of the Epic**)
+
+**Status:** ✅ **COMPLETE** — **PR #15 merged as `0dad29f06f63703f7a2d766939ece9be309f9a60`** on
+2026-08-17. Verified: `origin/main` and local `main` both equal that SHA, and the merged diff
+contained exactly **one** file. **This Story completes Epic 03.**
+
+**Test-only.** No production code, no model, no migration, no schema change. 25 tests in
+`backend/tests/test_tenant_isolation.py`.
+
+**⛔ THE CENTRAL NEW GUARD — Client A vs Client B in the SAME Workspace.**
+
+Workspace scoping alone is **not sufficient**. Two Clients holding ACTIVE `role=CLIENT` Memberships
+in the *same* Workspace both pass the workspace filter, so DB §27's second authorization level needs
+its own assertion: *"A Client must never be able to access another Client's resources by changing an
+ID in the request."*
+
+Covered by performing that attack directly — fetching Client B's record **by primary key** through
+Client A's scoped queryset and asserting **zero rows** — plus a batch-pk variant and a check that
+`client_membership_can_own_workspace` does not make A an owner of B's record. Story 3.4 proves
+cross-*workspace* client isolation but makes **none** of these same-workspace assertions.
+
+**Membership-gated cross-workspace access — tested in BOTH directions.** One `User` with an ACTIVE
+CLIENT Membership in Workspace A and none in Workspace B is denied B's rows and fails
+`resolve_workspace_context` for B; then, after an ACTIVE CLIENT Membership in B is added, access to
+B's own records works. Testing only the denial would let a bug that denies **everything** pass.
+
+**GENERIC `WorkspaceScopedModel` ISOLATION COVERAGE.** Records in Workspace A and Workspace B never
+appear in each other's scoped querysets; `unscoped()` sees both, which guards against a **vacuous
+pass** where the fixtures were simply empty; and a record whose `client` Membership belongs to a
+different Workspace than the record's own `workspace` is never returned — the DB §10 rule that
+`Membership.workspace_id` must match the record's `workspace_id`.
+
+**⛔ NOT DUPLICATED — invariants owned by earlier Stories.**
+
+| Invariant | Owner | Verified still caught |
+|---|---|---|
+| Inactive Membership denied | **Story 3.3** | 4 failures in `test_workspace_resolution.py` |
+| Fail-closed / fail-open queryset behaviour | **Story 3.4** | 3 failures in `test_tenant_query_infrastructure.py` |
+
+Story 3.5 deliberately does **not** restate these. Mutation testing confirmed both mutations
+genuinely applied and are still caught by the full suite, so **no invariant is left uncovered** —
+the non-duplication rule reduced redundancy without reducing coverage.
+
+**⛔ DEFERRED — model-specific assertions for models that do not exist yet.**
+
+| Blueprint bullet | Deferred to |
+|---|---|
+| Orders cannot cross Workspaces | **Epic 08** |
+| Plans cannot cross Workspaces | **Epics 11–12** |
+| Check-ins cannot cross Workspaces | **Epic 14** |
+
+`Order`, `TrainingPlan`, `NutritionPlan` and `CheckIn` do not exist. Rather than invent them, these
+bullets are expressed as the **generic contract they rest on** — no `WorkspaceScopedModel` subclass
+leaks rows across Workspaces — carried by one clearly named test-only subclass whose docstring
+states it stands in for the generic contract and validates no future business model. **No fake
+domain model was created** (verified by grep). The deferral is documented in the test module itself
+as well as here, so the owning Epics inherit the obligation.
+
+**Master-run, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / prod | **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** — no schema change |
+| Focused Story 3.5 tests | **0** — 25 pass |
+| Full suite (real PostgreSQL) | **0** — **340 tests** pass |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **0** |
+| GitHub Actions CI | **success** — run `32039920006` |
+
+**CI evidence.** The run log reads `Merge 7bdbe46c3265… into a19390f6e5d6…` — the live PR head into
+the live base.
+
+**Mutation-checked.** Production code from Stories 3.3/3.4 was mutated and **only the Story 3.5
+file** was run, so each result shows what this Story itself contributes. `manage.py check` returned
+0 every time and each mutation was confirmed to actually apply:
+
+| Mutation | Caught by 3.5 |
+|---|---|
+| Workspace boundary bypass | **yes** — 5 failures |
+| Wrong-role access allowed | **yes** — 2 permission tests |
+| Client/workspace mismatch allowed | **yes** |
+| **Client-vs-Client isolation removed** | **yes** — 3 tests incl. ID-tampering |
+| Inactive Membership accepted | no — Story 3.3 owns it |
+| Fail-open queryset | no — Story 3.4 owns it |
+
+All production files restored via `git checkout`; working tree verified clean afterwards.
+
+**Delegation.** Single AGY stream — a one-file test Story has no second disjoint stream, so Codex and
+GLM-5.3 were correctly left idle. **AGY needed ZERO corrections**: 25 tests, no long lines, no
+class-attribute assignments, passing on the first run.
+
+**✅ RECURRING AGY BUG RESOLVED.** The class-attribute/bound-method trap cost rework in Stories 3.3
+and 3.4. Placing it at the **top** of the test brief as an explicit automatic-rejection item, with
+correct and incorrect code side by side, eliminated it. **Keep that warning in every future AGY test
+brief.**
+
+---
+
+## ✅ EPIC 03 — Workspace & Multi-Tenancy — COMPLETE (2026-08-17)
+
+All five Stories merged: **3.1** Workspace Model · **3.2** Membership Model · **3.3** Workspace
+Resolution · **3.4** Tenant Query Infrastructure · **3.5** Tenant Isolation Tests.
+
+**The tenant boundary now exists and is tested:** slug-only resolution requiring
+`Workspace.status == ACTIVE` **and** `Membership.status == ACTIVE`; identical-404 anti-enumeration;
+wrong-role → 403; fail-closed tenant querysets; `Membership`-based ownership with workspace matching;
+and an isolation suite covering both cross-workspace and same-workspace Client-vs-Client access.
+
+**Unblocked by Epic 03 but each needing its own Story — do NOT fold either into Epic 04:**
+
+1. **Story 2.8 — Client OTP** (DEFERRED since 2026-08-17). Both endpoints need `workspace_slug`
+   resolution, which now exists. Its six resolved values are Blueprint §2C decisions 44–49.
+2. **The `Role` field on `GET /auth/me`**, deliberately omitted in Story 2.9 because role is
+   workspace-scoped via `Membership`. A workspace-scoped contract can now be defined for it.
 
 ---
 
@@ -2594,60 +2714,51 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 
 | Field | Value |
 |---|---|
-| **Epic** | Epic 03 — Workspace & Multi-Tenancy |
-| **Story ID** | **Story 3.5** |
-| **Story title** | Tenant Isolation Tests (final Epic 03 Story) |
+| **Epic** | **Epic 04 — Coach Onboarding & Settings** |
+| **Story ID** | Epic 04, first Story (read Blueprint §9 before planning) |
+| **Status** | NOT started |
 
-**Do NOT start Story 3.5 automatically — user approval required. No implementation has begun.**
+**Do NOT start Epic 04 automatically — user approval required. No implementation has begun.**
 
-**Blueprint §8 Story 3.5, verbatim:**
+**Where the project stands:** ✅ Epic 01 COMPLETE (8/8) · Epic 02 complete **except DEFERRED Story
+2.8** · ✅ **Epic 03 COMPLETE (5/5)**. Backend suite: **340 tests**, all gates green.
 
-```
-## Story 3.5 — Tenant Isolation Tests
+**Two items unblocked by Epic 03 — each needs its OWN Story, do NOT fold either into Epic 04:**
 
-Test:
+1. **Story 2.8 — Client OTP.** Deferred 2026-08-17 because both endpoints require `workspace_slug`
+   resolution, which now exists (Story 3.3). Its six resolved values are Blueprint §2C decisions
+   44–49. Ask the user whether to take it before or after Epic 04.
+2. **The `Role` field on `GET /auth/me`**, omitted in Story 2.9 because role is workspace-scoped via
+   `Membership`. A workspace-scoped contract can now be defined. `test_session_api.py` asserts the
+   key is currently **absent**, so that test must change deliberately when the field is added.
 
-- Coach A cannot access Workspace B.
-- Client A cannot access Client B.
-- Client A cannot access the same Client's data in another Workspace unless Membership exists.
-- Orders cannot cross Workspaces.
-- Plans cannot cross Workspaces.
-- Check-ins cannot cross Workspaces.
-```
+**Notes before starting Epic 04 — carried from Epic 03:**
 
-**Notes before starting Story 3.5 — carried from Story 3.4:**
+1. **`POST /api/v1/workspace` is the natural first Epic 04 Story** and is **transactional**
+   (API §6): reserve slug → create Workspace → create OWNER `Membership` → create
+   `PlatformSubscription` in `TRIALING` with a 7-day trial → billing events → audit event,
+   all-or-nothing. Note the billing pieces belong to Epic 22 — **resolve in preflight how much of
+   that chain Epic 04 may build**, rather than guessing.
+2. **This will be the FIRST slug-bearing route.** Story 3.3 deliberately did not register
+   `WorkspaceMiddleware` because no such route existed. Wiring it becomes appropriate now — verify
+   whether the DRF permission classes alone suffice before adding global middleware.
+3. **Do NOT rebuild Epic 03 infrastructure.** `resolve_workspace_context`, `WorkspaceContext`, the
+   three permission classes, `WorkspaceScopedModel`, `TenantQuerySet` and the ownership predicates
+   all exist. Import and reuse them.
+4. **Every new workspace-scoped model must inherit `WorkspaceScopedModel`** and use
+   `TenantQuerySet`, so tenant isolation is inherited rather than reimplemented per model.
+5. ⚠️ **A 401 needs an `APIException` subclass, not `AuthenticationFailed`** — DRF coerces 401 → 403
+   under `SessionAuthentication`. This has cost rework in Stories 2.6 and 2.7.
+6. **AGY test briefs must keep the `staticmethod()` warning at the top** — the class-attribute
+   bound-method bug cost rework in Stories 3.3 and 3.4, and the explicit warning eliminated it in 3.5.
+7. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Epic 04.
 
-1. ⚠️ **Three of the six bullets name models that DO NOT EXIST YET.** `Order` is Epic 08,
-   `TrainingPlan`/`NutritionPlan` are Epics 11–12, and `CheckIn` is Epic 14. Story 3.5 cannot test
-   real Orders, Plans or Check-ins crossing workspaces. **Resolve in preflight how much of 3.5 is
-   genuinely implementable now** — the likely answer is that the first three bullets are testable
-   against `Workspace`/`Membership` plus the Story 3.4 infrastructure, while the last three must be
-   expressed against a throwaway `WorkspaceScopedModel` subclass or deferred to their own Epics.
-   **Surface this as a decision rather than inventing the missing models.**
-2. **Partial coverage already exists** — do not duplicate it. Story 3.3's
-   `test_workspace_resolution.py` already covers Coach-A-cannot-reach-Workspace-B and the
-   inactive-membership case; Story 3.4's `test_tenant_query_infrastructure.py` already covers
-   cross-workspace `for_client` scoping with the same `User` in two workspaces. Story 3.5 should
-   **extend** coverage, not restate it.
-3. **The throwaway-concrete-model pattern is proven** (Story 3.4): subclass `WorkspaceScopedModel`
-   inside the test module and build its table with `connection.schema_editor()` in `setUpClass`,
-   dropping it in `tearDownClass`. This needs **no migration** and is the natural way to express
-   "Orders/Plans/Check-ins cannot cross workspaces" before those models exist.
-4. **Story 3.5 is a TEST Story** — it should add no production code and no migration. If a genuine
-   isolation defect is found, that is a finding to report, not a licence to redesign.
-5. ⚠️ **AGY recurring bug:** assigning a plain function to a class attribute makes it a **bound
-   method**. State `staticmethod()` explicitly in the test brief — this has now cost rework in
-   Stories 3.3 and 3.4.
-6. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 3.5.
-
-**Epic 03 dependency graph (Blueprint §8):**
-3.1 Workspace ✅ → 3.2 Membership ✅ → 3.3 Workspace Resolution ✅ → 3.4 Tenant Query
-Infrastructure ✅ → **3.5 Tenant Isolation Tests** (final).
-
-**Standing mutation-testing rules (Stories 3.1–3.4):** baseline from a copy held **outside** the
-working tree; every mutation must be **schema- and check-consistent** (`manage.py check` clean) so it
-fails for the intended reason; **a non-zero exit is not evidence of detection** — confirm the
-intended test failed; re-run the full suite after restoring and verify byte-identical restoration.
+**Standing mutation-testing rules (Stories 3.1–3.5):** baseline from a copy held **outside** the
+working tree (or `git checkout` for committed files); every mutation must be **schema- and
+check-consistent** (`manage.py check` clean) so it fails for the intended reason; **a non-zero exit
+is not evidence of detection** — confirm the intended test failed; when a mutation is deliberately
+**not** caught by the Story under test, verify the owning Story still catches it; re-run the full
+suite after restoring and verify the tree is clean.
 
 
 **Carry-ins still live:**
