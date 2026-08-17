@@ -729,7 +729,18 @@ Out of MVP scope: session listing and per-session revocation
 
 ---
 
-## Story 2.10 — Password Reset
+## Story 2.10 — Password Reset — ✅ COMPLETE (2026-08-17)
+
+**One token mechanism.** The uid-prefix machinery from Story 2.5 lives in a shared
+`UidPrefixedTokenGenerator` base. `EmailVerificationTokenGenerator` keeps its `email_verified_at`
+override; `PasswordResetLinkTokenGenerator` adds none, because Django's default
+`_make_hash_value` already folds in `user.password` and `user.last_login`. **Do not add a token
+model, a `used_at` field, or a second token mechanism.**
+
+**Rate limits (project decisions — API §22 mandates throttling here but specifies no numbers):**
+`password_forgot` = **3/minute**, `password_reset` = **10/minute**, mirroring the structurally
+identical `email_resend` / `email_verify` pair.
+
 
 Implement:
 
