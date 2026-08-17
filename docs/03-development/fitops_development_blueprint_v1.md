@@ -106,6 +106,26 @@ Architecture §22–§22G. Summary:
 | 42 | **Coach-commerce `Payment.status`** — `PENDING`, `SUBMITTED`, `APPROVED`, `REJECTED`, `CANCELLED`. Completely separate from the FitOps `BillingPayment` enum. |
 | 43 | **Cancellation timing** — unchanged and confirmed: `cancel_at_period_end = true`, the period runs out, the request is recorded as a `SUBSCRIPTION_CANCELLED` event with effective-date metadata, and `cancelled_at` is set when the subscription actually enters CANCELLED. No separate request event type. |
 
+## 2C — Implementation Decisions (Story 2.8 preflight, 2026-08-17)
+
+**These six were NOT specified by any authoritative document.** The Story 2.8 preflight established
+that the MVP Spec, API Specification, Database & Authentication Architecture and ERD are all silent
+on each item below. They are **project decisions taken to fill documentation gaps**, approved by the
+user on 2026-08-17 — they are **not** pre-existing requirements, and nothing in the approved
+documentation stated them before this entry.
+
+| # | Decision | Gap it fills |
+|---|---|---|
+| 44 | **Client OTP request rate limit** — `3/hour` per email **plus** `10/hour` per IP. | API §22 makes rate limiting mandatory for Client OTP requests and says limits should be "especially strict", but specifies **no number**. |
+| 45 | **Client OTP verification rate limit** — `10/hour`. | API §22 makes rate limiting mandatory for Client OTP verification but specifies **no number**. |
+| 46 | **Maximum OTP verification attempts** — `5`. | Blueprint Story 2.8 requires an "Attempt limit" and DB Architecture requires "Maximum verification attempts"; the `LoginOTP.attempts` field exists, but **no number** is documented anywhere. |
+| 47 | **OTP expiry — exactly 10 minutes.** | DB Architecture says only "around 10 minutes", which is approximate wording rather than a contract. This decision ratifies it as an exact value. |
+| 48 | **Attempt exhaustion → `OTP_RATE_LIMITED` with HTTP 429.** No `OTP_ATTEMPTS_EXCEEDED` code is to be invented. | API §2's closed error-code list contains no code for attempt exhaustion, while the Blueprint requires an attempt limit. Inventing a code is forbidden, so exhaustion reuses an existing documented code. |
+| 49 | **`LoginOTP.user_id` is non-null.** | Neither DB Architecture nor the ERD annotates nullability. The documentation does flag nullability when intended (`Application.user_id` is explicitly nullable "because an application can precede any Membership"); no such note exists for `LoginOTP`. Non-null composes correctly with the mandated anti-enumeration behaviour: no `User` means no OTP row, and the endpoint still returns a generic success. |
+
+Rate limits 44 and 45 were chosen for this flow specifically. They are **not** derived from the
+`login` (10/minute) or `email_resend` (3/minute) scopes, which govern unrelated flows.
+
 ---
 
 # 3. Phase 1 Product Goal
@@ -643,7 +663,23 @@ are unchanged.
 
 ---
 
-## Story 2.8 — Client OTP
+## Story 2.8 — Client OTP — ⏸️ DEFERRED (2026-08-17) — blocked by Epic 03
+
+**Not started, and deliberately not partially implemented.** Both documented endpoints require
+`workspace_slug` in their request bodies (API §5), and this Story's own text requires the Workspace
+slug/context. Resolving that slug requires `Workspace` and verifying the caller requires
+`Membership(role=CLIENT)` — both belong to Epic 03 and do not exist in code. Implementing the
+endpoints without them would mean inventing tenant behaviour and would allow a Client to
+authenticate into any Workspace.
+
+The `LoginOTP` model is structurally independent of the tenant tier (no `workspace_id`; the ERD
+shows it hanging off `User` only), so a model-only slice was technically possible. It was
+**rejected** by user decision on 2026-08-17: it delivers no working endpoint, splits one Story
+across an Epic boundary, and leaves an unused service layer. Story 2.8 is taken up whole after
+Epic 03.
+
+Decisions 44–49 in §2C were resolved during this Story's preflight and apply when it is built.
+
 
 Implement:
 

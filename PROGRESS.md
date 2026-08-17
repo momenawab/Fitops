@@ -31,7 +31,7 @@
 | **Current phase** | Implementation |
 | **Current Epic** | Epic 01 — Project Foundation |
 | **Current Epic** | Epic 02 — Authentication & Identity |
-| **Current Story** | Story 2.7 — TOTP 2FA — **COMPLETE and merged** (2026-08-17) |
+| **Current Story** | Story 2.9 — Sessions — starting. Story 2.8 DEFERRED (blocked by Epic 03) |
 | **Overall status** | ✅ Epic 01 COMPLETE (8/8). **Epic 02 in progress — Stories 2.1–2.7 complete**; Story 2.8 NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-17 |
