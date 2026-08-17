@@ -30,8 +30,8 @@
 |---|---|
 | **Current phase** | Implementation |
 | **Current Epic** | **Epic 03 — Workspace & Multi-Tenancy** |
-| **Current Story** | Story 3.2 — Membership Model — **COMPLETE and merged** (2026-08-17) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. **Epic 03 in progress — Stories 3.1 and 3.2 complete**; Story 3.3 NOT started |
+| **Current Story** | Story 3.3 — Workspace Resolution — **COMPLETE and merged** (2026-08-17) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. **Epic 03 in progress — Stories 3.1, 3.2 and 3.3 complete**; Story 3.4 NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-17 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -587,7 +587,117 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 3.2 is complete and merged; Story 3.3 (Workspace Resolution) has not started. Workspace and Membership now both exist, so Story 2.8 and the `/auth/me` Role field are unblocked — but neither is part of Story 3.3.
+**No Story currently in progress.** Story 3.3 is complete and merged; Story 3.4 (Tenant Query Infrastructure) has not started. Story 2.8 and the `/auth/me` Role field remain unblocked but each needs its own Story.
+
+---
+
+## Completed — Story 3.3
+
+### Story 3.3 — Workspace Resolution  (Epic 03 — Workspace & Multi-Tenancy)
+
+**Status:** ✅ **COMPLETE** — **PR #13 merged as `fc06d7f9a13e80141959fb4b4f728d7357293ce8`** on
+2026-08-17. Verified: `origin/main` and local `main` both equal that SHA, and the merged diff
+contained exactly the five intended files.
+
+**Implemented** — `URL slug → Workspace → authenticated User → Membership → Workspace Context`, as
+callables plus DRF permission classes in `common/`:
+
+| File | Contents |
+|---|---|
+| `common/middleware/workspace.py` | `WorkspaceContext` (frozen dataclass) + `resolve_workspace_context()` |
+| `common/permissions/workspace.py` | `WorkspacePermission` base, `CoachWorkspacePermission`, `ClientWorkspacePermission` |
+
+`CoachWorkspacePermission` allows **OWNER, COACH**; `ClientWorkspacePermission` allows **CLIENT**.
+Both attach the resolved context to the request so downstream code never re-resolves.
+
+**⛔ CRITICAL INVARIANT — a context resolves ONLY when
+`Workspace.status == ACTIVE` **AND** `Membership.status == ACTIVE`.**
+
+A Membership row that merely **exists** grants nothing. This was the specific subtle bug flagged in
+the Story 3.2 carry-in notes, and it is guarded by tests and proven by mutation M1. Resolution is
+**by URL slug only** — no code path accepts a caller-supplied `workspace_id`, per API §1 and
+DB §25.
+
+**⛔ ANTI-ENUMERATION — four cases return IDENTICAL 404 behaviour:**
+
+| Case | Result |
+|---|---|
+| Slug does not exist | `NotFound` **404** |
+| Workspace exists, caller has **no** Membership | `NotFound` **404** |
+| Membership exists but is **INACTIVE** | `NotFound` **404** |
+| Workspace `status == SUSPENDED` | `NotFound` **404** |
+
+This is **structural, not conventional**: every failing path raises a **bare `NotFound()`** with no
+argument, so all four share DRF's identical default detail and are indistinguishable in status,
+error code and message. The guard test compares the four **real exceptions to each other**, never to
+an invented string — so a future change that adds a helpful-sounding message fails immediately.
+Mutation M3 proved this by introducing a distinct message for "no membership" and being caught on
+two pairs.
+
+**⛔ WRONG ROLE → `PermissionDenied` (403), not 404.** A caller holding an **active** Membership but
+the wrong role for the area gets 403. This is deliberate and safe: that caller already knows the
+Workspace exists, so 403 leaks nothing and is the more useful answer. Only the documented
+`NOT_FOUND` and `PERMISSION_DENIED` codes are used (API §2 closed list), formatted by the existing
+envelope. Resolution is per-request with **no global "current Workspace"** and no module-level state.
+
+**SCOPE BOUNDARIES — recorded so a later Story does not duplicate or pre-empt them:**
+
+1. **Story 3.4 owns `WorkspaceScopedModel`, `TenantQuerySet` and object-ownership helpers.** None of
+   them exist yet and none belong in 3.3. Blueprint 3.3 and 3.4 have overlapping wording ("tenant
+   context", "workspace permissions" appear in both); the split follows the ERD's named components —
+   3.3 delivers `WorkspaceMiddleware / Context` + `WorkspacePermission`, 3.4 delivers the
+   model/queryset layer that consumes the context.
+2. **No middleware was registered in `settings.MIDDLEWARE`.** The ERD names `WorkspaceMiddleware`,
+   but **no slug-bearing route exists in the project yet**, so there is nothing for it to parse.
+   Wiring global request handling with zero consumers would be speculative. The resolution logic
+   ships as callables + permission classes; **wire the middleware when the first slug-scoped route
+   lands**, and verify `MIDDLEWARE` remains untouched until then.
+
+**Master-run, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / prod | **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** — no model change, no migration |
+| Focused Story 3.3 tests | **0** — 23 pass |
+| Full suite | **0** — **287 tests** pass |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **0** |
+| GitHub Actions CI | **success** — run `32037227385` |
+
+**CI evidence.** The run log reads `Merge 5be0d14fe3ca… into 52df3be43a5b…` — the live PR head into
+the live base, so CI tested the actual merge rather than a stale ref.
+
+**Mutation-checked — `manage.py check` verified clean before every run, so each mutation genuinely
+executed rather than being rejected by a system check (the Story 3.2 lesson):**
+
+| Mutation | Result |
+|---|---|
+| Membership `ACTIVE` filter dropped (inactive members admitted) | **3 failures** inc. indistinguishability |
+| Workspace `ACTIVE` filter dropped (suspended workspaces resolve) | suspended + indistinguishability fail |
+| Distinct message for "no membership" (**enumeration leak**) | indistinguishability fails on 2 pairs |
+| Role check bypassed | **4** role tests fail |
+
+`workspace.py` restored **byte-identical**, verified against a baseline held outside the working
+tree.
+
+**Delegation.** Codex (resolver + permissions) ∥ AGY (23 tests) ran in parallel on disjoint files.
+**Codex needed no corrections.**
+
+**Master fix disclosed — AGY class-attribute binding bug.** AGY's blind-authorship name-discovery
+shim assigned the resolver to a **class attribute** (`cls.resolver = get_workspace_resolver()`),
+which Python turns into a **bound method**, silently passing the TestCase instance as the first
+positional argument. Six tests errored with `takes 2 positional arguments but 3 were given`. The
+resolver signature was correct; only the test plumbing was wrong. Fixed with `staticmethod()` plus a
+comment naming the trap. Also fixed three over-long docstrings and one `getattr` with a constant
+attribute.
+
+**Known observation, deliberately not changed:** `WorkspacePermission.has_permission` reads
+`view.kwargs[self.workspace_slug_kwarg]` and raises `KeyError` → 500 if a route is wired without the
+slug kwarg. That is a **misconfiguration**, not user input, and failing loudly beats silently 404-ing
+a broken route.
+
+**Next Story:** 3.4 — Tenant Query Infrastructure.
 
 ---
 
@@ -2378,58 +2488,59 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 | Field | Value |
 |---|---|
 | **Epic** | Epic 03 — Workspace & Multi-Tenancy |
-| **Story ID** | **Story 3.3** |
-| **Story title** | Workspace Resolution |
+| **Story ID** | **Story 3.4** |
+| **Story title** | Tenant Query Infrastructure |
 
-**Do NOT start Story 3.3 automatically — user approval required. No implementation has begun.**
+**Do NOT start Story 3.4 automatically — user approval required. No implementation has begun.**
 
-**Blueprint §8 Story 3.3, verbatim:**
+**Blueprint §8 Story 3.4, verbatim:**
 
 ```
-## Story 3.3 — Workspace Resolution
+## Story 3.4 — Tenant Query Infrastructure
 
-Implement server-side resolution:
+Create shared utilities for:
 
-URL slug -> Workspace -> Authenticated User -> Membership -> Workspace Context
-
-This applies to the Coach dashboard routes (/{workspaceSlug}/dashboard, /{workspaceSlug}/clients,
-/{workspaceSlug}/orders, ...) as well as the public and Client portals.
-
-Never trust Workspace IDs from the frontend.
+- Workspace-scoped models
+- Tenant querysets
+- Workspace permissions
+- Tenant context
+- Object ownership
+- Membership resolution (the tenant-scoped identity used by Workspace-scoped business records)
 ```
 
-**Notes before starting Story 3.3 — carried from Story 3.2:**
+**Notes before starting Story 3.4 — carried from Story 3.3:**
 
-1. **This is the highest-risk Story of Epic 03.** CLAUDE.md §10 lists ten non-negotiable isolation
-   rules. Read them, plus API §25's seventeen security rules, before designing anything.
-2. **Never trust a frontend-supplied `workspace_id`.** Resolve the Workspace from the **URL slug**
-   server-side, then verify the caller's `Membership` and role.
-3. **Unauthorized lookups must return NO RESULT, never a signal that the object exists** (DB §26).
-   A 404-vs-403 distinction that reveals existence is a defect, not a UX choice.
-4. **Client access requires TWO checks** (DB §27, API §28): an **active** Membership in the
-   requested Workspace, **and** the resource belonging to that Client *and* that Workspace.
-5. **"Active Membership" now has a concrete meaning** — `Membership.status == "ACTIVE"`
-   (Blueprint §2C decision 50). Resolution must check status, not merely the row's existence.
-6. **`Membership` is the authoritative source of workspace-scoped role.** Do not derive role from
-   `User`, and do not add role to any global identity model.
-7. **`common/` is shared infrastructure, not a Django app.** Middleware, tenant context and
-   permission classes belong there. Note Story 3.4 owns the reusable tenant-query utilities, so keep
-   3.3 to resolution itself and avoid pre-building 3.4.
+1. **Four of the six bullets above are ALREADY BUILT by Story 3.3** — "Workspace permissions",
+   "Tenant context" and "Membership resolution" ship as `common/permissions/workspace.py` and
+   `common/middleware/workspace.py`. **Do not rebuild or duplicate them.** Story 3.4's genuinely new
+   surface is **`WorkspaceScopedModel`**, **`TenantQuerySet`** and **object ownership**.
+2. **`WorkspaceScopedModel` carries an explicit `workspace_id`** even where it could be inferred
+   through a relation — CLAUDE.md §6 states this is deliberate, for explicit scoping, simpler
+   queries, stronger security, and easier indexing/auditing.
+3. **Tenant-scoped lookups must return NO RESULT for unauthorized objects**, never a signal that the
+   object exists (DB §26). `TenantQuerySet` must make the safe path the default one.
+4. **`client_id` on a workspace-scoped record is an FK to `Membership(role=CLIENT)`**, and
+   `coach_id` to `Membership(role in {OWNER, COACH})` — never to `User` or `ClientProfile`
+   (DB §10, ERD §4). `Membership.workspace_id` must match the record's `workspace_id`.
+5. **The Story 3.3 invariant still governs:** a context is valid only when
+   `Workspace.status == ACTIVE` **and** `Membership.status == ACTIVE`. Anything 3.4 builds should
+   consume the existing resolved context rather than re-deriving access.
+6. **No workspace-scoped business model exists yet**, so 3.4 is infrastructure with no consumer —
+   the same situation as 3.3. Expect abstract bases and querysets, unit-tested directly, with **no
+   migration** unless a concrete model is genuinely required.
+7. **Still no slug-bearing route**, so `settings.MIDDLEWARE` should remain untouched.
 8. ⚠️ **A 401 needs an `APIException` subclass, not `AuthenticationFailed`** — DRF coerces 401 → 403
-   under `SessionAuthentication`. This has cost rework in Stories 2.6 and 2.7.
-9. **Unblocked but NOT part of Story 3.3:** Story 2.8 (Client OTP) and the `Role` field omitted from
-   `GET /auth/me` in Story 2.9. Both now have their prerequisites but need their own Stories.
-10. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 3.3.
+   under `SessionAuthentication`.
+9. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 3.4.
 
-**Epic 03 dependency graph (Blueprint §8) is strictly sequential:**
-3.1 Workspace ✅ → 3.2 Membership ✅ → **3.3 Workspace Resolution** → 3.4 Tenant Query
-Infrastructure → 3.5 Tenant Isolation Tests.
+**Epic 03 dependency graph (Blueprint §8):**
+3.1 Workspace ✅ → 3.2 Membership ✅ → 3.3 Workspace Resolution ✅ → **3.4 Tenant Query
+Infrastructure** → 3.5 Tenant Isolation Tests.
 
-**Mutation-testing rules (Stories 3.1–3.2 — apply from now on):**
-take the baseline from a copy stored **outside the working tree**, never the live tree; make every
-mutation **schema-consistent** (regenerate the migration, and keep `manage.py check` passing) so it
+**Standing mutation-testing rules (Stories 3.1–3.3):** baseline from a copy held **outside** the
+working tree; every mutation must be **schema- and check-consistent** (`manage.py check` clean) so it
 fails for the intended reason; **a non-zero exit is not evidence of detection** — confirm the
-intended test actually failed; and re-run the full suite after restoring.
+intended test failed; re-run the full suite after restoring and verify byte-identical restoration.
 
 
 **Carry-ins still live:**

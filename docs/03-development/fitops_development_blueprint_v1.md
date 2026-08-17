@@ -836,7 +836,24 @@ UNIQUE(user_id, workspace_id)
 
 ---
 
-## Story 3.3 — Workspace Resolution
+## Story 3.3 — Workspace Resolution — ✅ COMPLETE (2026-08-17)
+
+**Critical invariant:** a workspace context resolves only when
+**`Workspace.status == ACTIVE` AND `Membership.status == ACTIVE`**. A Membership row that merely
+exists grants nothing. Resolution is **by URL slug only** — a caller-supplied `workspace_id` is
+never accepted.
+
+**Anti-enumeration (structural, not conventional):** non-existent slug, no Membership, INACTIVE
+Membership and SUSPENDED Workspace all raise a bare `NotFound()`, so all four are identical in
+status, code and message and cannot be told apart.
+
+**Wrong role with an active Membership → `PermissionDenied` (403)**, because that caller already
+knows the Workspace exists, so 403 leaks nothing.
+
+**Scope boundary:** Story 3.4 owns `WorkspaceScopedModel`, `TenantQuerySet` and object-ownership
+helpers — none of them belong here. **No middleware was registered**, because no slug-bearing route
+exists yet.
+
 
 Implement server-side resolution:
 
