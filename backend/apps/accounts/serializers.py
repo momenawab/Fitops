@@ -41,6 +41,19 @@ class EmailVerificationResendSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
 
+class PasswordForgotSerializer(serializers.Serializer):
+    """Validate a password-reset email address."""
+
+    email = serializers.EmailField()
+
+
+class PasswordResetSerializer(serializers.Serializer):
+    """Validate a password-reset token submission."""
+
+    token = serializers.CharField()
+    password = serializers.CharField(write_only=True)
+
+
 class CoachLoginSerializer(serializers.Serializer):
     """Validate coach login credentials."""
 

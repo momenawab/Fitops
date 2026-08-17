@@ -206,6 +206,8 @@ REST_FRAMEWORK = {
         "email_resend": "3/minute",
         "email_verify": "10/minute",
         "login": "10/minute",
+        "password_forgot": "3/minute",
+        "password_reset": "10/minute",
     },
     "EXCEPTION_HANDLER": "common.exceptions.fitops_exception_handler",
 }
