@@ -6,6 +6,8 @@ from functools import partial
 import pyotp
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -22,9 +24,11 @@ from .serializers import (
     CoachRegistrationSerializer,
     EmailVerificationResendSerializer,
     EmailVerificationSerializer,
+    PasswordForgotSerializer,
+    PasswordResetSerializer,
     TwoFactorCodeSerializer,
 )
-from .tokens import email_verification_token_generator
+from .tokens import email_verification_token_generator, password_reset_token_generator
 
 REGISTRATION_RESPONSE = {
     "message": "Account created. Please verify your email.",
@@ -33,7 +37,11 @@ REGISTRATION_RESPONSE = {
 EMAIL_RESEND_RESPONSE = {
     "message": "If an unverified account exists for this email, a verification email has been sent."
 }
+PASSWORD_FORGOT_RESPONSE = {
+    "message": "If an account exists for this email, a password reset email has been sent."
+}
 INVALID_VERIFICATION_TOKEN_MESSAGE = "Invalid or expired verification token."
+INVALID_PASSWORD_RESET_TOKEN_MESSAGE = "Invalid or expired password reset token."
 INVALID_TWO_FACTOR_CODE_MESSAGE = "Invalid two-factor authentication code."
 PENDING_TWO_FACTOR_USER_ID_SESSION_KEY = "pending_2fa_user_id"
 
@@ -44,6 +52,17 @@ def _send_verification_email(user):
     send_mail(
         subject="Verify your FitOps email",
         message=f"Use this token to verify your email: {token}",
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[user.email],
+    )
+
+
+def _send_password_reset_email(user):
+    """Send a stateless password-reset token to a coach."""
+    token = password_reset_token_generator.make_token(user)
+    send_mail(
+        subject="Reset your FitOps password",
+        message=f"Use this token to reset your password: {token}",
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[user.email],
     )
@@ -131,6 +150,61 @@ class EmailVerificationResendView(APIView):
                 transaction.on_commit(partial(_send_verification_email, user))
 
         return Response(EMAIL_RESEND_RESPONSE)
+
+
+class PasswordForgotView(APIView):
+    """Queue a reset email without exposing account state."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "password_forgot"
+
+    def post(self, request):
+        serializer = PasswordForgotSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user_model = get_user_model()
+        email = user_model.objects.normalize_email(serializer.validated_data["email"])
+
+        with transaction.atomic():
+            user = user_model.objects.filter(email=email).first()
+            if user is not None:
+                transaction.on_commit(partial(_send_password_reset_email, user))
+
+        return Response(PASSWORD_FORGOT_RESPONSE)
+
+
+class PasswordResetView(APIView):
+    """Reset a coach password from a stateless password-reset token."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "password_reset"
+
+    def post(self, request):
+        serializer = PasswordResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        token = serializer.validated_data["token"]
+        user_id = password_reset_token_generator.get_user_id(token)
+        if user_id is None:
+            self._raise_invalid_token()
+
+        with transaction.atomic():
+            user = get_user_model().objects.filter(pk=user_id).select_for_update().first()
+            if user is None or not password_reset_token_generator.check_token(user, token):
+                self._raise_invalid_token()
+            try:
+                validate_password(serializer.validated_data["password"], user)
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError({"password": list(exc.messages)}) from exc
+            user.set_password(serializer.validated_data["password"])
+            user.save()
+
+        return Response()
+
+    @staticmethod
+    def _raise_invalid_token():
+        """Raise the shared response for all unusable reset tokens."""
+        raise serializers.ValidationError({"token": [INVALID_PASSWORD_RESET_TOKEN_MESSAGE]})
 
 
 class EmailNotVerified(exceptions.PermissionDenied):
