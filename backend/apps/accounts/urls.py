@@ -3,10 +3,12 @@
 from django.urls import path
 
 from .views import (
+    AuthMeView,
     CoachLoginView,
     CoachRegistrationView,
     EmailVerificationResendView,
     EmailVerificationView,
+    LogoutView,
     TwoFactorConfirmView,
     TwoFactorDisableView,
     TwoFactorSetupView,
@@ -14,6 +16,8 @@ from .views import (
 )
 
 urlpatterns = [
+    path("auth/me", AuthMeView.as_view(), name="auth-me"),
+    path("auth/logout", LogoutView.as_view(), name="logout"),
     path("auth/login", CoachLoginView.as_view(), name="coach-login"),
     path("auth/register", CoachRegistrationView.as_view(), name="coach-register"),
     path("auth/email/verify", EmailVerificationView.as_view(), name="email-verify"),

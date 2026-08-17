@@ -5,6 +5,8 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from .models import CoachSecurity
+
 
 class CoachRegistrationSerializer(serializers.Serializer):
     """Validate the fields required to register a coach account."""
@@ -50,3 +52,25 @@ class TwoFactorCodeSerializer(serializers.Serializer):
     """Validate a time-based one-time password submission."""
 
     code = serializers.CharField(min_length=6, max_length=6)
+
+
+class AuthMeSerializer(serializers.Serializer):
+    """Serialize the authenticated user's global account state."""
+
+    id = serializers.UUIDField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    first_name = serializers.CharField(read_only=True)
+    last_name = serializers.CharField(read_only=True)
+    phone = serializers.CharField(read_only=True)
+    email_verified = serializers.SerializerMethodField()
+    two_factor_enabled = serializers.SerializerMethodField()
+    platform_role = serializers.CharField(read_only=True)
+
+    def get_email_verified(self, user):
+        return user.email_verified_at is not None
+
+    def get_two_factor_enabled(self, user):
+        try:
+            return user.coach_security.two_factor_enabled
+        except CoachSecurity.DoesNotExist:
+            return False

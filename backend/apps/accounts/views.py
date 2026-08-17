@@ -5,7 +5,7 @@ from functools import partial
 
 import pyotp
 from django.conf import settings
-from django.contrib.auth import authenticate, get_user_model, login
+from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 
 from .models import CoachSecurity
 from .serializers import (
+    AuthMeSerializer,
     CoachLoginSerializer,
     CoachRegistrationSerializer,
     EmailVerificationResendSerializer,
@@ -277,4 +278,20 @@ class TwoFactorDisableView(APIView):
         security.two_factor_enabled = False
         security.two_factor_secret = ""
         security.save(update_fields=["two_factor_enabled", "two_factor_secret", "updated_at"])
+        return Response()
+
+
+class AuthMeView(APIView):
+    """Return the authenticated user's global account state."""
+
+    def get(self, request):
+        user = get_user_model().objects.select_related("coach_security").get(pk=request.user.pk)
+        return Response(AuthMeSerializer(user).data)
+
+
+class LogoutView(APIView):
+    """Revoke the authenticated user's current session."""
+
+    def post(self, request):
+        logout(request)
         return Response()
