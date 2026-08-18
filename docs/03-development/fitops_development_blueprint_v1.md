@@ -942,7 +942,31 @@ Test:
 
 # 9. EPIC 04 — Coach Onboarding & Settings
 
-## Story 4.1 — Create Workspace
+## Story 4.1 — Create Workspace — ✅ COMPLETE (2026-08-18)
+
+**One atomic transaction:** validate + reserve slug → `Workspace` →
+`Membership(role=OWNER, status=ACTIVE)` → `AuditLog` event. On any failure **nothing** is persisted.
+
+**Slug reservation is race-safe** — it relies on the database unique constraint and converts
+`IntegrityError` to **409 `CONFLICT`** inside a savepoint, never check-then-insert. The user row is
+`SELECT ... FOR UPDATE` so two concurrent requests from the same Coach cannot both pass the
+ownership check.
+
+**"A Coach without an existing owned Workspace" means no `Membership(role=OWNER)` specifically.** A
+user holding only CLIENT or COACH memberships may still create their first Workspace. Violation
+returns **403 `PERMISSION_DENIED`**.
+
+**`AuditLog` created here.** Both FKs are **nullable with `SET_NULL`** — an audit log is a security
+record that must outlive the user and workspace it references, and CASCADE would destroy exactly the
+history that makes it an audit log. `workspace` is nullable because documented audit events include
+**admin login**, which has no workspace. `action` is a plain `CharField` — **no enum**, since no
+document defines a closed set of action values.
+
+⛔ **`PlatformSubscription` / trial / billing remain owned by Epic 22 Story 22.3** and were NOT
+implemented here. ⛔ **Pillow / image processing belongs to Story 4.3** — approved for Epic 04
+uploads (API §21: Pillow → WebP → thumbnails), but Story 4.1 handles no images so the dependency
+was not added.
+
 
 After Coach authentication:
 
