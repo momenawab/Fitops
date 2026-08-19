@@ -29,9 +29,9 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | **Epic 04 — Coach Onboarding & Settings** (Stories 4.1–4.3 complete) |
-| **Current Story** | Story 4.3 — Branding — **COMPLETE and merged** (2026-08-19) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ Epic 01 · Epic 02 (except DEFERRED 2.8) · ✅ **Epic 03 COMPLETE (5/5)**. **Epic 04 in progress — Stories 4.1–4.3 complete**; 4.4 (final Epic 04 Story) NOT started |
+| **Current Epic** | ✅ **Epic 04 — Coach Onboarding & Settings — COMPLETE** (2026-08-19) |
+| **Current Story** | Story 4.4 — Payment Methods — **COMPLETE and merged** (2026-08-19). Epic 04 finished |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ Epic 01 · Epic 02 (except DEFERRED 2.8) · ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. **Epic 05 (Packages) NOT started** |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-17 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -587,7 +587,168 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 4.3 is complete and merged; Story 4.4 (Payment Methods) has not started and is the **final Epic 04 Story**. Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+**No Story currently in progress.** ✅ **Epic 04 is COMPLETE.** Epic 05 (Packages) has not started. Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+
+---
+
+## Completed — Story 4.4  ·  ✅ EPIC 04 COMPLETE
+
+### Story 4.4 — Payment Methods  (Epic 04 — **final Story of the Epic**)
+
+**Status:** ✅ **COMPLETE** — **PR #19 merged as `da69082dc516294a936a085bab3261f143e41dbd`** on
+2026-08-19. Verified: `origin/main` and local `main` both equal that SHA, `git merge-base
+--is-ancestor` confirms containment, and the merged diff contained exactly the **twelve** intended
+files. **This Story completes Epic 04.**
+
+**Endpoints — all four `Coach/Owner`:**
+
+| Route | Success |
+|---|---|
+| `GET /api/v1/workspace/payment-methods` | **200** — list, caller's Workspace only |
+| `POST /api/v1/workspace/payment-methods` | **201** |
+| `PATCH /api/v1/workspace/payment-methods/{id}` | **200** |
+| `DELETE /api/v1/workspace/payment-methods/{id}` | **204** |
+
+**`PaymentMethod` SCHEMA — exactly the ten documented fields** (DB Architecture and ERD agree),
+in the **`workspaces`** app:
+
+```text
+id · workspace_id · type · name · instructions · account_details · image · is_active
+created_at · updated_at
+```
+
+`type` is a closed `TextChoices` set: **`INSTAPAY` · `VODAFONE_CASH` · `BANK_TRANSFER` · `CUSTOM`**.
+`is_active` defaults to **True**. `image` is a **`FileField`** (consistent with `Workspace.logo`).
+
+**WORKSPACE SCOPING.** `PaymentMethod` **inherits `WorkspaceScopedModel`** (Story 3.4), so the
+required non-null `workspace` FK and `TenantQuerySet` are inherited rather than reimplemented.
+**Every** object lookup goes through `TenantQuerySet.for_workspace(...)` before
+`get_object_or_404` — there is **no unscoped `objects.get(pk=...)` anywhere**. A payment method
+belonging to another Workspace is therefore **invisible**: it returns a **404 byte-identical to a
+random non-existent id**, and **never a 403**, which would reveal that the object exists (DB §26).
+
+**⛔ PERMISSION DECISION — `Coach/Owner`, NOT Owner-only.**
+
+API §6's Payment Methods block states *"Coach/Owner."* on GET and *"Coach/Owner. Payment methods are
+Workspace-scoped."* on POST; PATCH and DELETE sit inside that same block. **This is deliberately
+different from Stories 4.2 and 4.3, which are OWNER-only.** An **ACTIVE COACH is fully authorised on
+all four endpoints** — returning 403 to a COACH here would be a **regression, not a safety measure**.
+
+Conveniently the existing `resolve_active_coach_membership` already permits OWNER **or** COACH, so
+this Story needed **no extra role guard** — 4.2/4.3 add their OWNER-only check on top. Mutation M5
+(wrongly adding an OWNER-only guard) is caught. **Do not tighten this endpoint by reflex.**
+
+**⛔ DELETE IS A HARD DELETE → 204.** Resolved from the documents, not guessed:
+1. The documented `PaymentMethod` schema has **no `deleted_at` field**, so a soft delete would
+   require **inventing** one.
+2. PATCH already *"Accepts the same fields, including `is_active`"*, so deactivation already exists —
+   a soft-delete DELETE would be **redundant with PATCH**.
+
+§6 documents no status code; **204** is the REST convention for a delete with no body. Tests assert
+the row is **gone from the database**, not merely that `is_active` became False.
+
+**⛔ UUID PRIMARY KEY REQUIREMENT FOR EVERY `WorkspaceScopedModel` SUBCLASS — a documented-rule
+violation caught in this Story.**
+
+`WorkspaceScopedModel` supplies **no `id`**, so `PaymentMethod` initially inherited Django's default
+**`BigAutoField`** and would have exposed **integer ids in URLs**. That violates **API §25 rule 13 —
+*"Use UUIDs for externally exposed resource identifiers"*** (also CLAUDE.md §13), which every other
+model in the project follows. Fixed by declaring an explicit
+`id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)` and regenerating the
+migration.
+
+⚠️ **The abstract base still provides no UUID pk.** **EVERY future `WorkspaceScopedModel` subclass
+MUST declare its own explicit UUID primary key** — `Package`, `Application`, `Order`, `Payment`,
+`Subscription`, `TrainingPlan`, `NutritionPlan`, `PlanAssignment`, `CheckIn`, `ProgressPhoto`,
+`CoachFeedback`, `Notification`, `CheckInSchedule` — or it will repeat this bug. Consider whether a
+later Story should add the UUID pk to the abstract base itself; that would change Story 3.4's
+accepted contract and its tests, so it must be an explicit decision.
+
+**How it surfaced (worth remembering).** AGY's tests used real UUIDs, the detail endpoint 404'd with
+**HTML** instead of the JSON envelope, and Master's first instinct was that the URL converter was
+wrong. Changing `<int:>` → `<uuid:>` **still failed**; only then did checking the actual pk type
+reveal the assumption was backwards — Codex's `<int:>` matched the model, and the **model** was what
+violated the rule. **Lesson: when a fix does not work, verify the assumption rather than iterating on
+the symptom.**
+
+**IMAGE HANDLING — Story 4.3's pipeline reused verbatim.** `common.storage.process_uploaded_image`
+already performs MIME validation, size validation, Pillow processing, WebP conversion, resize,
+thumbnail persistence and the declared-`content_type` vs Pillow-detected-format cross-check. **No
+validation was duplicated and no second pipeline exists.** Uploads reuse the existing
+**`workspace_logo_upload`** scope at **20/hour** on **POST and PATCH only**; **GET and DELETE are
+not throttled**. Reusing the approved rate avoided inventing a second number.
+
+**SIX ACCEPTED MODEL-SET GUARDS UPDATED — mechanical propagation.** Adding a second concrete model to
+`workspaces` legitimately changes its model set, so guards asserting `{"Workspace"}` in
+`test_membership_model`, `test_tenant_query_infrastructure`, `test_workspace_create_api`,
+`test_workspace_model`, `test_workspace_branding_api` and `test_workspace_settings_api` now include
+`PaymentMethod`. **Each guard keeps its original intent** — notably
+`test_workspace_scoped_model_contributes_no_models_to_real_apps` still proves the **abstract base
+itself** contributes nothing, with its docstring updated to state that concrete subclasses are
+expected members. There is exactly one correct interpretation (the model is documented and
+approved), so this is the same mechanical class as Story 3.2's `accounts` guards — not a decision
+requiring escalation.
+
+**Master-run, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / prod | **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** |
+| `migrate` (real PostgreSQL 16) | **0** — `workspaces.0002_paymentmethod` |
+| Focused Story 4.4 tests | **0** — 43 pass |
+| Full suite | **0** — **496 tests** pass |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **0** |
+| GitHub Actions CI | **success** — run `32248659516` |
+
+**CI evidence.** The run log reads `Merge f10290085db2… into 9a5aaf386b02…` — the live PR head into
+the live base.
+
+**MUTATION EVIDENCE — six mutations, `manage.py check` returning 0 before every run and each
+confirmed to actually apply:**
+
+| Mutation | Result |
+|---|---|
+| Object lookup unscoped (**cross-tenant access**) | **4 failures** |
+| List query unscoped | **2** GET tests fail |
+| Create assigns the wrong Workspace | **2** tests fail |
+| Soft delete instead of hard delete | **2** delete tests fail |
+| **OWNER-only guard wrongly added** (COACH forbidden) | Coach-authorised test fails |
+| `type` choices removed | invalid-type test fails |
+
+`views.py` and `models.py` restored **byte-identical**.
+
+**Delegation.** Codex (model + CRUD) ∥ AGY (43 tests) on disjoint files; GLM-5.3 correctly idle.
+**AGY produced no class-attribute bound-method bug for the fifth consecutive Story.**
+
+---
+
+## ✅ EPIC 04 — Coach Onboarding & Settings — COMPLETE (2026-08-19)
+
+All four Stories merged: **4.1** Create Workspace · **4.2** Workspace Settings · **4.3** Branding ·
+**4.4** Payment Methods.
+
+A Coach can now onboard end to end: create a Workspace (with the OWNER Membership and an audit event
+in one atomic transaction), read and update its settings, upload branding through the API §21 image
+pipeline, and configure the payment methods their Clients will pay through.
+
+**⛔ EPIC 04 CARRY-INS THAT MUST REMAIN EXPLICIT:**
+
+1. **Pillow / API §21 image processing belongs to Story 4.3.** Implemented there
+   (`backend/common/storage/images.py`) and **reused verbatim** by Story 4.4. **Never write a second
+   pipeline** — reuse `process_uploaded_image` and `save_thumbnail_beside`.
+2. **`PlatformSubscription` / trial / billing belongs to Epic 22, Story 22.3.** Blueprint Story 4.1
+   annotates that step `# Epic 22, Story 22.3`. **None of it was built in Epic 04**, and tests assert
+   the `billing` app still exposes **no** models. Epic 22 adds that step to Story 4.1's transaction
+   later.
+3. **Story 2.8 — Client OTP remains its own Story.** Unblocked by Epic 03 since 2026-08-17, **not**
+   part of Epic 04. Its six resolved values are Blueprint §2C decisions 44–49.
+4. **The `Role` field on `GET /auth/me` remains its own Story.** Unblocked by Epic 03, **not** part
+   of Epic 04. `test_session_api.py` asserts `role` is currently **absent**, so that test must change
+   **deliberately** when the field is added.
+5. **Every future `WorkspaceScopedModel` subclass must declare an explicit UUID primary key** — see
+   the Story 4.4 record above.
 
 ---
 
@@ -3109,78 +3270,53 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 
 | Field | Value |
 |---|---|
-| **Epic** | Epic 04 — Coach Onboarding & Settings |
-| **Story ID** | **Story 4.4** |
-| **Story title** | Payment Methods — **final Epic 04 Story** |
+| **Epic** | **Epic 05 — Packages** |
+| **Story ID** | Epic 05, first Story (read Blueprint §10 before planning) |
+| **Status** | NOT started |
 
-**Do NOT start Story 4.4 automatically — user approval required. No implementation has begun.**
+**Do NOT start Epic 05 automatically — user approval required. No implementation has begun.**
 
-**Blueprint §9 Story 4.4 + API §6:**
+**Where the project stands:** ✅ Epic 01 · Epic 02 complete **except DEFERRED Story 2.8** ·
+✅ Epic 03 (5/5) · ✅ **Epic 04 (4/4)**. Backend suite: **496 tests**, all gates green.
 
-```
-GET    /workspace/payment-methods
-POST   /workspace/payment-methods
-PATCH  /workspace/payment-methods/{id}
-DELETE /workspace/payment-methods/{id}
+**Notes before starting Epic 05 — carried from Epic 04:**
 
-Types: INSTAPAY · VODAFONE_CASH · BANK_TRANSFER · CUSTOM
-```
+1. ⛔ **`Package` is workspace-scoped** (ERD §28), so it **must inherit `WorkspaceScopedModel`** and
+   **must declare its own explicit UUID primary key**. The abstract base supplies no `id`, and
+   inheriting a `BigAutoField` would expose integer ids in URLs, violating **API §25 rule 13**. This
+   bug was caught in Story 4.4 — do not repeat it.
+2. **Reuse Epic 03/04 infrastructure, never rebuild it:** `resolve_active_coach_membership` for the
+   non-slug coach route, `TenantQuerySet.for_workspace(...)` for every query and object lookup, and
+   `common.storage.process_uploaded_image` if any image is involved.
+3. **Object-level endpoints must be invisible across tenants** — 404 identical to a non-existent id,
+   **never 403**. Scope every lookup; no unscoped `objects.get(pk=...)`.
+4. **Read API §6/§8 for the exact permission wording per endpoint.** Epic 04 proved these differ:
+   `PATCH /workspace` and branding are **OWNER-only**, while payment methods are **Coach/Owner**.
+   **Do not copy a permission rule by reflex** — read what §6 says for the specific endpoint.
+5. **Rate limiting only where API §22 lists it.** It does **not** list package endpoints; it does
+   list file uploads. Do not add throttles that no document requires, and do not invent a rate.
+6. ⚠️ **A 401 needs an `APIException` subclass, not `AuthenticationFailed`** — DRF coerces 401 → 403
+   under `SessionAuthentication`.
+7. **Adding a concrete model to an app changes its model-set guards.** Expect to update the
+   architecture guards mechanically, preserving each guard's original intent.
+8. **Keep the `staticmethod()` warning at the top of every AGY test brief** — five consecutive clean
+   Stories since it was added.
+9. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Epic 05.
 
-Documented POST body: `type`, `name`, `instructions`, `account_details`, `is_active`. An **optional
-QR code or image** may be attached; when included the request uses `multipart/form-data` with an
-`image` field, and **image handling follows API §21** — which Story 4.3 already implements.
-Permissions: **Coach/Owner**. Payment methods are **Workspace-scoped**.
+**Still unblocked, each needing its OWN Story — do NOT fold into Epic 05:** Story 2.8 (Client OTP)
+and the `Role` field on `GET /auth/me`.
 
-**Notes before starting Story 4.4 — carried from Story 4.3:**
-
-1. **`PaymentMethod` is fully specified — ten fields** (DB Architecture + ERD agree):
-   `id, workspace_id, type, name, instructions, account_details, image, is_active, created_at,
-   updated_at`. It lives in the **`workspaces`** app. **This Story DOES need a model + migration**,
-   unlike 4.2 and 4.3.
-2. **It must inherit `WorkspaceScopedModel`** (Story 3.4) so tenant isolation is inherited rather
-   than reimplemented, and its queries must go through `TenantQuerySet`. Do **not** hand-roll
-   workspace filtering.
-3. **Reuse the Story 4.3 image pipeline verbatim** for the optional `image` —
-   `common.storage.process_uploaded_image` and `save_thumbnail_beside` already do MIME validation,
-   size validation, WebP conversion, resize, thumbnail persistence and the content_type
-   cross-check. **Do not write a second pipeline.**
-4. **The upload throttle already exists** — `workspace_logo_upload` at 20/hour (§2C decision 51).
-   Decide deliberately whether POST/PATCH with an image share that scope or need their own; if a new
-   scope is wanted, its rate is a **decision to surface**, not to invent.
-5. ⚠️ **API §6 says "Coach/Owner" for payment methods — NOT "Owner-only".** That differs from
-   `PATCH /workspace` (4.2) and the branding endpoints (4.3). **Do not copy the OWNER-only rule by
-   reflex** — read §6's wording for these specific endpoints and apply exactly what it says.
-6. **`{id}` in the path makes these the first object-level endpoints.** Object ownership must be
-   enforced: a payment method belonging to another Workspace must be **invisible** (404, never 403)
-   per DB §26. Story 3.4's ownership predicates and `TenantQuerySet` exist for exactly this.
-7. **`DELETE` semantics are undocumented** — hard delete or soft via `is_active`? The model already
-   has `is_active`, and DELETE is listed separately from PATCH, which suggests a real delete. If
-   genuinely ambiguous, **surface it as one decision** rather than guessing.
-8. **Response shapes are undocumented.** Follow the Epic 04 pattern: derive the shape from the
-   documented model fields, exclude nothing arbitrarily, and disclose the choice.
-9. **Do NOT touch** `CheckInSchedule`, `WorkspaceArchive`, billing/trial (Epic 22), Client OTP (2.8)
-   or the `/auth/me` Role field (2.9).
-10. **Keep the `staticmethod()` warning at the top of every AGY test brief** — four consecutive
-    clean Stories since it was added.
-11. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 4.4.
-
-**Epic 04:** 4.1 ✅ → 4.2 ✅ → 4.3 ✅ → **4.4 Payment Methods (final)**.
-
-**Still unblocked, each needing its OWN Story — do NOT fold into Epic 04:** Story 2.8 (Client OTP)
-and the `Role` field on `GET /auth/me`. `test_session_api.py` asserts `role` is currently **absent**,
-so that test must change deliberately when the field is added.
-
-**Standing verification rules (Stories 3.1–4.3):** baseline from a copy held **outside** the working
+**Standing verification rules (Stories 3.1–4.4):** baseline from a copy held **outside** the working
 tree (or `git checkout` for committed files); every mutation must be **schema- and check-consistent**
 (`manage.py check` clean) so it fails for the intended reason; **a non-zero exit is not evidence of
 detection** — confirm the intended test failed; **when a mutation survives, determine WHY before
-calling it redundant** — in Story 4.3 a "redundant" survival was a real coverage hole; **a pipeline
-that produces an artifact proves nothing — test that the artifact is persisted**; an atomicity test
-that fails at the first step proves nothing; **when Master makes an undocumented design decision,
-Master must add the test that locks it in**; **always run the FULL suite before declaring a Story
-green**; isolate `MEDIA_ROOT` in any test that writes files; after a session restart, verify worker
-branches for actual commits; re-run the full suite after restoring and verify byte-identical
-restoration.
+calling it redundant**; **a pipeline that produces an artifact proves nothing — test that the
+artifact is persisted**; an atomicity test that fails at the first step proves nothing; **when Master
+makes an undocumented design decision, Master must add the test that locks it in**; **when a fix does
+not work, verify the assumption rather than iterating on the symptom** (Story 4.4's UUID pk);
+**always run the FULL suite before declaring a Story green**; isolate `MEDIA_ROOT` in any test that
+writes files; after a session restart, verify worker branches for actual commits; re-run the full
+suite after restoring and verify byte-identical restoration.
 
 
 **Carry-ins still live:**

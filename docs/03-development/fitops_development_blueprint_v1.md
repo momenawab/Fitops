@@ -941,7 +941,16 @@ Test:
 
 ---
 
-# 9. EPIC 04 — Coach Onboarding & Settings
+# 9. EPIC 04 — Coach Onboarding & Settings — ✅ COMPLETE (2026-08-19)
+
+**All four Stories complete:** 4.1 Create Workspace · 4.2 Workspace Settings · 4.3 Branding ·
+4.4 Payment Methods.
+
+**Epic 04 carry-ins that must remain explicit:**
+- **Pillow / API §21 image processing belongs to Story 4.3** — implemented there, reused by 4.4.
+- **`PlatformSubscription` / trial / billing belongs to Epic 22 Story 22.3** — never built here.
+- **Story 2.8 (Client OTP) remains its own Story** — unblocked, not part of Epic 04.
+- **The `Role` field on `GET /auth/me` remains its own Story** — unblocked, not part of Epic 04.
 
 ## Story 4.1 — Create Workspace — ✅ COMPLETE (2026-08-18)
 
@@ -1065,7 +1074,27 @@ POST /workspace/logo
 
 ---
 
-## Story 4.4 — Payment Methods
+## Story 4.4 — Payment Methods — ✅ COMPLETE (2026-08-19)
+
+**Permission is `Coach/Owner` on ALL FOUR endpoints** (API §6 states it on GET and POST and covers
+PATCH/DELETE in the same block). ⚠️ **Deliberately different from Stories 4.2/4.3, which are
+OWNER-only** — an ACTIVE COACH is fully authorised here. **Do not tighten it by reflex.**
+
+**`DELETE` is a HARD delete → 204.** The documented schema has **no `deleted_at`** field, so a soft
+delete would require inventing one, and PATCH already accepts `is_active`.
+
+**`PaymentMethod` inherits `WorkspaceScopedModel`.** Every object lookup goes through
+`TenantQuerySet.for_workspace(...)`; a payment method in another Workspace is **invisible** — 404
+identical to a random non-existent id, **never 403**.
+
+⛔ **`WorkspaceScopedModel` supplies NO `id`.** Every concrete subclass **MUST declare an explicit
+UUID primary key**, or it inherits a `BigAutoField` and exposes integer ids in URLs — violating
+**API §25 rule 13** ("Use UUIDs for externally exposed resource identifiers"). This was caught in
+Story 4.4 and applies to every future workspace-scoped model.
+
+**Images reuse the Story 4.3 pipeline verbatim**; uploads reuse the `workspace_logo_upload` scope
+(20/hour) on POST and PATCH only.
+
 
 Implement:
 
