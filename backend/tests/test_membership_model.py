@@ -461,7 +461,7 @@ class MembershipArchitectureGuardTests(TestCase):
         concrete_model_names = {model._meta.object_name for model in workspaces_app.get_models()}
         self.assertSetEqual(
             concrete_model_names,
-            {"Workspace"},
+            {"Workspace", "PaymentMethod"},
             "workspaces app must expose only the 'Workspace' model in Story 3.2.",
         )
 

@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from common.storage import process_uploaded_image, save_thumbnail_beside
 
-from .models import Workspace
+from .models import PaymentMethod, Workspace
 
 
 class WorkspaceCreateSerializer(serializers.Serializer):
@@ -92,6 +92,14 @@ class _ThumbnailPersistingMixin:
                 save_thumbnail_beside(field_file, thumbnail)
         return instance
 
+    def create(self, validated_data):
+        instance = super().create(validated_data)
+        for field_name, thumbnail in getattr(self, "_pending_thumbnails", {}).items():
+            field_file = getattr(instance, field_name, None)
+            if field_file:
+                save_thumbnail_beside(field_file, thumbnail)
+        return instance
+
 
 class WorkspaceBrandingUpdateSerializer(_ThumbnailPersistingMixin, serializers.ModelSerializer):
     """Validate and process optional branding fields from a multipart update."""
@@ -121,3 +129,27 @@ class WorkspaceLogoUploadSerializer(_ThumbnailPersistingMixin, serializers.Model
 
     def validate_logo(self, value):
         return self._process("logo", value)
+
+
+class PaymentMethodSerializer(_ThumbnailPersistingMixin, serializers.ModelSerializer):
+    """Validate and serialize payment methods without exposing their workspace id."""
+
+    image = serializers.FileField(required=False)
+
+    class Meta:
+        model = PaymentMethod
+        fields = (
+            "id",
+            "type",
+            "name",
+            "instructions",
+            "account_details",
+            "image",
+            "is_active",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+    def validate_image(self, value):
+        return self._process("image", value)
