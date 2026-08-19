@@ -208,6 +208,7 @@ REST_FRAMEWORK = {
         "login": "10/minute",
         "password_forgot": "3/minute",
         "password_reset": "10/minute",
+        "workspace_logo_upload": "20/hour",
     },
     "EXCEPTION_HANDLER": "common.exceptions.fitops_exception_handler",
 }

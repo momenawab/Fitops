@@ -2,6 +2,8 @@
 
 from rest_framework import serializers
 
+from common.storage import process_uploaded_image, save_thumbnail_beside
+
 from .models import Workspace
 
 
@@ -43,3 +45,79 @@ class WorkspaceSettingsSerializer(serializers.ModelSerializer):
             "whatsapp_number",
             "timezone",
         )
+
+
+class WorkspaceBrandingSerializer(serializers.Serializer):
+    """Serialize the branding response without changing the workspace contract."""
+
+    logo = serializers.SerializerMethodField()
+    profile_image = serializers.SerializerMethodField()
+    brand_color = serializers.CharField(read_only=True)
+    description = serializers.CharField(read_only=True)
+
+    @staticmethod
+    def _file_url(workspace, field_name):
+        field = getattr(workspace, field_name)
+        return field.url if field else None
+
+    def get_logo(self, workspace):
+        return self._file_url(workspace, "logo")
+
+    def get_profile_image(self, workspace):
+        return self._file_url(workspace, "profile_image")
+
+
+class _ThumbnailPersistingMixin:
+    """Persist the WebP thumbnail that ``process_uploaded_image`` produces.
+
+    The pipeline generates a thumbnail per API §21, but a serializer that only stores the
+    processed original silently discards it. Each validated image field records its thumbnail
+    here, and ``update`` writes them once the originals have their final storage names.
+    """
+
+    thumbnail_fields: tuple[str, ...] = ()
+
+    def _process(self, field_name, value):
+        processed = process_uploaded_image(value)
+        if not hasattr(self, "_pending_thumbnails"):
+            self._pending_thumbnails = {}
+        self._pending_thumbnails[field_name] = processed.thumbnail
+        return processed.image
+
+    def update(self, instance, validated_data):
+        instance = super().update(instance, validated_data)
+        for field_name, thumbnail in getattr(self, "_pending_thumbnails", {}).items():
+            field_file = getattr(instance, field_name, None)
+            if field_file:
+                save_thumbnail_beside(field_file, thumbnail)
+        return instance
+
+
+class WorkspaceBrandingUpdateSerializer(_ThumbnailPersistingMixin, serializers.ModelSerializer):
+    """Validate and process optional branding fields from a multipart update."""
+
+    logo = serializers.FileField(required=False, write_only=True)
+    profile_image = serializers.FileField(required=False, write_only=True)
+
+    class Meta:
+        model = Workspace
+        fields = ("logo", "profile_image", "brand_color", "description")
+
+    def validate_logo(self, value):
+        return self._process("logo", value)
+
+    def validate_profile_image(self, value):
+        return self._process("profile_image", value)
+
+
+class WorkspaceLogoUploadSerializer(_ThumbnailPersistingMixin, serializers.ModelSerializer):
+    """Validate and process the required logo upload."""
+
+    logo = serializers.FileField(write_only=True)
+
+    class Meta:
+        model = Workspace
+        fields = ("logo",)
+
+    def validate_logo(self, value):
+        return self._process("logo", value)
