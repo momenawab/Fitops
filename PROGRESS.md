@@ -29,9 +29,9 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | **Epic 04 — Coach Onboarding & Settings** (Story 4.1 complete) |
-| **Current Story** | Story 4.1 — Create Workspace — **COMPLETE and merged** (2026-08-18) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ Epic 01 · Epic 02 (except DEFERRED 2.8) · ✅ **Epic 03 COMPLETE (5/5)**. **Epic 04 in progress — Story 4.1 complete**; 4.2 NOT started |
+| **Current Epic** | **Epic 04 — Coach Onboarding & Settings** (Stories 4.1–4.2 complete) |
+| **Current Story** | Story 4.2 — Workspace Settings — **COMPLETE and merged** (2026-08-18) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ Epic 01 · Epic 02 (except DEFERRED 2.8) · ✅ **Epic 03 COMPLETE (5/5)**. **Epic 04 in progress — Stories 4.1 and 4.2 complete**; 4.3 NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-17 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -587,7 +587,137 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 4.1 is complete and merged; Story 4.2 (Workspace Settings) has not started. Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+**No Story currently in progress.** Story 4.2 is complete and merged; Story 4.3 (Branding) has not started and is the Story that adds **Pillow** and the API §21 image pipeline. Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+
+---
+
+## Completed — Story 4.2
+
+### Story 4.2 — Workspace Settings  (Epic 04 — Coach Onboarding & Settings)
+
+**Status:** ✅ **COMPLETE** — **PR #17 merged as `96033926a43618bf53429967e8b8a84bb757182a`** on
+2026-08-18. Verified: `origin/main` and local `main` both equal that SHA, `git merge-base
+--is-ancestor` confirms containment, and the merged diff contained exactly the **four** intended
+files.
+
+**DOCUMENTED CONTRACT (API §6):**
+
+| Method | Permission | Success |
+|---|---|---|
+| `GET /api/v1/workspace` | **Coach-only** — ACTIVE `OWNER` or `COACH` | **200**, eleven keys |
+| `PATCH /api/v1/workspace` | **OWNER-only** — see decision below | **200**, eleven keys |
+
+Documented PATCH body, all fields **optional** under PATCH semantics: `name`, `description`,
+`brand_color`, `currency`, `whatsapp_number`, `timezone`. Omitted fields keep their values; an empty
+`{}` payload is accepted and changes nothing.
+
+| Case | Status | Code |
+|---|---|---|
+| ACTIVE OWNER — GET / PATCH | **200** / **200** | — |
+| ACTIVE COACH — GET | **200** | — |
+| **ACTIVE COACH — PATCH** | **403** | `PERMISSION_DENIED` |
+| No membership · INACTIVE membership · SUSPENDED workspace · CLIENT-only | **404** | `NOT_FOUND` |
+| Validation failure | **400** | `VALIDATION_ERROR` |
+| `PUT` / `DELETE` | **405** | — |
+
+**⛔ CONSERVATIVE DECISION — the ENTIRE `PATCH /workspace` is OWNER-only.**
+
+API §6 states *"Owner-only for sensitive workspace settings."* That phrase appears **exactly once**
+in the whole specification, and **no document anywhere defines which settings are "sensitive."**
+Splitting the six documented fields into sensitive and non-sensitive groups would have required
+**inventing a classification**, which is forbidden. The conservative reading was taken instead: the
+whole endpoint requires `Membership(role=OWNER)`. This is strictly **more restrictive** than any
+split would be, so it cannot under-protect. An ACTIVE `COACH` therefore gets **403
+`PERMISSION_DENIED`** on PATCH while retaining **200** on GET.
+
+**If a later Story needs Coach-editable settings, that requires an explicit decision and a
+documented list — do not loosen this endpoint by inference.**
+
+**SECURITY AND RESOLUTION PROPERTIES:**
+
+1. **`Workspace.status == ACTIVE` AND `Membership.status == ACTIVE` are both required.** A Membership
+   row that merely exists grants nothing — the Epic 03 invariant, carried forward.
+2. **No `workspace_id` is ever accepted from the request.** Resolution goes exclusively through the
+   caller's own `Membership`. Mutation M6 (dropping the caller filter so any Workspace could resolve)
+   was caught by two access tests.
+3. **No global "current Workspace" was introduced.** This is the documented non-slug onboarding route
+   (Blueprint §2A decision 18): Phase 1 restricts `POST /api/v1/workspace` to a Coach **without** an
+   existing owned Workspace, so each Coach owns at most one and `/workspace` resolves unambiguously
+   through their own Membership.
+4. **`slug` and `status` are IMMUTABLE through settings.** The settings serializer is a
+   `ModelSerializer` whitelisting only the six documented fields, so both are **structurally
+   unreachable** rather than merely guarded. `slug` is the tenant identifier — silently accepting a
+   slug change through a settings endpoint would be a real security problem. Tests **reload the
+   object from the database** rather than trusting the response body.
+5. **404 rather than 403 for no qualifying membership**, so the endpoint never reveals that a
+   Workspace exists to someone without access (DB §26). The four unauthorized cases are
+   **indistinguishable** — same status, same envelope code, same message — asserted by comparing the
+   real responses to each other. The single 403 is the ACTIVE COACH on PATCH, who already knows the
+   Workspace exists, so 403 leaks nothing and is the more useful answer.
+6. **`logo` and `profile_image` are DEFERRED to Story 4.3.** Both GET and PATCH return the **same
+   eleven keys** Story 4.1 returns, keeping the representation consistent across the Epic. Their
+   file-URL representation is defined by Story 4.3 (Branding) — inventing one here was avoided.
+
+**AMENDED MERGED TEST — mechanical propagation, not a behaviour change.** Story 4.1's
+`test_disallowed_http_methods_return_405_method_not_allowed` asserted that **GET, PUT, PATCH and
+DELETE** all return 405 on `/api/v1/workspace`. That was correct when POST was the only method on
+the path. **GET and PATCH are documented in API §6**, so Story 4.2 legitimately adds them and the
+test was narrowed to **PUT and DELETE**, which remain unsupported, with a docstring explaining why.
+There is exactly one correct interpretation here — the endpoints are documented — so this is
+mechanical propagation of a documented contract, the same class as the `accounts` model-set guards
+updated in Story 3.2, not a decision requiring escalation. **POST behaviour is otherwise untouched**,
+and a regression guard asserts POST still returns **201** for a Coach with no owned Workspace and
+**403** for one who already owns one.
+
+⚠️ **The focused test run alone would have missed this.** `tests.test_workspace_settings_api` passed
+37/37 while the full suite failed. **Always run the full suite before declaring a Story green.**
+
+**Master-run, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / prod | **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** — no schema change, no migration |
+| Focused Story 4.2 tests | **0** — 37 pass |
+| Full suite (real PostgreSQL) | **0** — **408 tests** pass |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **0** |
+| GitHub Actions CI | **success** — run `32241831065` |
+
+**CI evidence.** The run log reads `Merge 259f342f85eb… into e914bdc61c10…` — the live PR head into
+the live base.
+
+**Mutation-checked — six mutations, `manage.py check` returning 0 before every run and each
+confirmed to actually apply:**
+
+| Mutation | Result |
+|---|---|
+| PATCH owner-only guard removed (COACH can edit settings) | coach-PATCH-403 test fails |
+| ACTIVE **membership** requirement dropped | both indistinguishability tests fail |
+| ACTIVE **workspace** requirement dropped | both indistinguishability tests fail |
+| `slug` made updatable | slug-immutability test fails (DB reload) |
+| CLIENT role accepted as a Coach | both indistinguishability tests fail |
+| Resolution ignores the caller (**cross-tenant**) | 2 access tests fail |
+
+`views.py` and `serializers.py` restored **byte-identical**, verified against baselines held outside
+the working tree.
+
+**Delegation.** Codex (implementation) ∥ AGY (37 tests) on disjoint files; GLM-5.3 correctly idle.
+**Neither worker needed any correction.** Codex routed all three methods through one view, used
+`select_related("workspace")`, and made `slug`/`status` structurally unreachable via a whitelisting
+`ModelSerializer` rather than a guard. **AGY produced no class-attribute bound-method bug for the
+third consecutive Story** — the top-of-brief warning is holding.
+
+**SESSION-RESTART RECOVERY (process note).** The first Story 4.2 attempt was interrupted when the
+previous session ended mid-dispatch. State was **verified rather than assumed**: both
+`wt/story-4.2-*` branches existed at `e914bdc` with **zero commits**, Codex had produced nothing and
+AGY had never been dispatched, so **no work was lost**. The Story was restarted with **fresh branch
+names** (`wt/story-4.2-impl` / `wt/story-4.2-test`) rather than pruning the two stale worktree
+registrations, respecting the standing no-pruning rule. **Lesson: after any session restart, verify
+worker branches for actual commits before assuming either loss or completion.**
+
+**Next Story:** 4.3 — Branding (`PATCH /workspace/branding`, `POST /workspace/logo`) — the Story that
+adds **Pillow** and the API §21 image pipeline.
 
 ---
 
@@ -2843,61 +2973,72 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 | Field | Value |
 |---|---|
 | **Epic** | Epic 04 — Coach Onboarding & Settings |
-| **Story ID** | **Story 4.2** |
-| **Story title** | Workspace Settings |
+| **Story ID** | **Story 4.3** |
+| **Story title** | Branding — **adds Pillow + the API §21 image pipeline** |
 
-**Do NOT start Story 4.2 automatically — user approval required. No implementation has begun.**
+**Do NOT start Story 4.3 automatically — user approval required. No implementation has begun.**
 
-**Blueprint §9 Story 4.2 + API §6:**
+**Blueprint §9 Story 4.3 + API §6:**
 
 ```
-GET   /workspace     -> Coach-only
-PATCH /workspace     -> Owner-only for sensitive workspace settings
+PATCH /workspace/branding     -> Supports: Logo, Profile image, Brand color, Public description
+POST  /workspace/logo         -> multipart/form-data
 ```
 
-Documented PATCH request body: `name`, `description`, `brand_color`, `currency`,
-`whatsapp_number`, `timezone`.
+**Notes before starting Story 4.3 — carried from Story 4.2:**
 
-**Notes before starting Story 4.2 — carried from Story 4.1:**
+1. ⚠️ **This is the Story that adds Pillow.** Decision approved 2026-08-18: implement API §21
+   **properly** — process uploads through **Pillow**, convert to **WebP**, generate **thumbnails** —
+   and do **not** defer image processing to Epic 20. This is the first dependency added since
+   `pyotp` (Story 2.7). Pillow is already in the locked stack (CLAUDE.md §3), so this is activation,
+   not a new dependency decision.
+2. **`Workspace.logo` and `Workspace.profile_image` are `FileField`, NOT `ImageField`** (Stories 2.2
+   and 3.1 chose `FileField` precisely because Pillow was absent). Now that Pillow arrives, decide
+   deliberately whether to keep `FileField` — **changing to `ImageField` would require a migration**
+   and is not required by any document. **Recommended: keep `FileField`** and do the validation and
+   processing in the serializer/service layer, so no schema change is needed. Surface it if you
+   disagree.
+3. **Story 4.2 deliberately excluded `logo`/`profile_image` from the eleven-key response.** Story 4.3
+   **owns defining their representation** (URL? relative path? nested object with thumbnail?). Once
+   defined, decide whether `GET`/`PATCH /workspace` should also expose them — that would change the
+   Story 4.1/4.2 response contract and its whole-key-set tests, so it must be an **explicit,
+   disclosed** change, not a silent one.
+4. **API §21 rules are mandatory:** validate MIME type, validate size, process through Pillow,
+   convert to WebP where appropriate, generate thumbnails where appropriate, store on Hetzner
+   (via the storage abstraction), keep metadata in PostgreSQL, and **never expose raw filesystem
+   paths**. Authorized access goes through permission-checked endpoints.
+5. **`backend/common/storage/` exists as an empty package** — the storage abstraction belongs there,
+   not in the app.
+6. **Permissions:** follow the Story 4.2 pattern — resolve through the caller's own `Membership`,
+   require **ACTIVE Workspace + ACTIVE Membership**, 404 for no qualifying membership, and decide
+   OWNER-vs-Coach from API §6's wording for these specific endpoints rather than copying 4.2's
+   PATCH rule by reflex.
+7. **Rate limiting:** API §22 **does** list **file uploads** as requiring rate limiting. Unlike
+   Stories 4.1/4.2, a throttle is **mandatory** here. No number is documented — surface it as a
+   decision rather than inventing one, and do not borrow the OTP or login rates.
+8. **Do NOT touch** `PaymentMethod` (Story 4.4), `CheckInSchedule`, `WorkspaceArchive`, billing/trial
+   (Epic 22), Client OTP (2.8) or the `/auth/me` Role field (2.9).
+9. **Keep the `staticmethod()` warning at the top of every AGY test brief** — it has now held for
+   three consecutive Stories after costing rework in 3.3 and 3.4.
+10. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 4.3.
 
-1. **`/workspace` is NOT slug-scoped.** In Phase 1 `POST /api/v1/workspace` is restricted to a Coach
-   **without** an existing owned Workspace, so each Coach owns at most one and `/workspace` resolves
-   unambiguously through their `Membership(role=OWNER)`. This is the documented non-slug onboarding
-   route (Blueprint §2A decision 18), **not** a global "current Workspace" — do not introduce one.
-2. **`GET` is Coach-only; `PATCH` is Owner-only for sensitive settings** (API §6). Resolve exactly
-   which fields are "sensitive" from the documents before splitting permissions — if the split is
-   not documented, surface it as a decision rather than inventing one.
-3. **Reuse Epic 03 infrastructure.** `resolve_workspace_context`, the permission classes,
-   `TenantQuerySet` and the ownership predicates all exist. Do not rebuild them. Note the slug-based
-   permission classes may not fit a non-slug route — check before forcing them.
-4. **The GET response shape is undocumented.** Story 4.1 established an 11-key create response
-   excluding `logo`/`profile_image`. Decide deliberately whether GET matches it or includes the
-   image fields, and disclose the choice.
-5. **Do NOT add `logo`/`profile_image` handling here** — that is Story 4.3 (Branding), which also
-   owns adding **Pillow** and the API §21 pipeline (WebP + thumbnails).
-6. **Do NOT touch `PaymentMethod`** (Story 4.4), `CheckInSchedule`, `WorkspaceArchive`, or anything
-   billing/trial/subscription (Epic 22).
-7. ⚠️ **A 401 needs an `APIException` subclass, not `AuthenticationFailed`** — DRF coerces 401 → 403
-   under `SessionAuthentication`.
-8. **Keep the `staticmethod()` warning at the top of every AGY test brief.** It has held for two
-   consecutive Stories after costing rework in 3.3 and 3.4.
-9. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 4.2.
-
-**Epic 04 remaining:** 4.1 ✅ → **4.2 Workspace Settings** → 4.3 Branding (adds Pillow) →
-4.4 Payment Methods.
+**Epic 04 remaining:** 4.1 ✅ → 4.2 ✅ → **4.3 Branding (adds Pillow)** → 4.4 Payment Methods
+(also needs the image pipeline for its optional `PaymentMethod.image`).
 
 **Still unblocked, each needing its OWN Story — do NOT fold into Epic 04:** Story 2.8 (Client OTP)
 and the `Role` field on `GET /auth/me`. `test_session_api.py` asserts `role` is currently **absent**,
 so that test must change deliberately when the field is added.
 
-**Standing mutation-testing rules (Stories 3.1–4.1):** baseline from a copy held **outside** the
-working tree (or `git checkout` for committed files); every mutation must be **schema- and
-check-consistent** (`manage.py check` clean) so it fails for the intended reason; **a non-zero exit
-is not evidence of detection** — confirm the intended test failed; when a mutation is deliberately
-not caught by the Story under test, verify the owning Story still catches it; **an atomicity test
-that fails at the first step proves nothing** — it must fail after the first write; **when Master
-makes an undocumented design decision, Master must add the test that locks it in**; re-run the full
-suite after restoring and verify byte-identical restoration.
+**Standing verification rules (Stories 3.1–4.2):** baseline from a copy held **outside** the working
+tree (or `git checkout` for committed files); every mutation must be **schema- and check-consistent**
+(`manage.py check` clean) so it fails for the intended reason; **a non-zero exit is not evidence of
+detection** — confirm the intended test failed; when a mutation is deliberately not caught by the
+Story under test, verify the owning Story still catches it; **an atomicity test that fails at the
+first step proves nothing** — it must fail after the first write; **when Master makes an undocumented
+design decision, Master must add the test that locks it in**; **always run the FULL suite before
+declaring a Story green — the focused run missed a real regression in Story 4.2**; after any session
+restart, **verify worker branches for actual commits** before assuming loss or completion; re-run the
+full suite after restoring and verify byte-identical restoration.
 
 
 **Carry-ins still live:**

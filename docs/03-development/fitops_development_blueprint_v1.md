@@ -1000,7 +1000,25 @@ After creation, every Workspace-scoped route for this Coach uses the Workspace s
 
 ---
 
-## Story 4.2 — Workspace Settings
+## Story 4.2 — Workspace Settings — ✅ COMPLETE (2026-08-18)
+
+**Non-slug route.** Resolution goes through the caller's own `Membership`. **No `workspace_id` is
+ever accepted from the request**, and there is **no global "current Workspace"**. Both methods
+require **`Workspace.status == ACTIVE` AND `Membership.status == ACTIVE`**.
+
+**`GET` is Coach-only** (OWNER or COACH). **`PATCH` is OWNER-only for the ENTIRE endpoint** —
+API §6 says "Owner-only for sensitive workspace settings" but **no document defines which settings
+are sensitive**, so splitting the six fields would require inventing a classification. The
+conservative reading was taken; an ACTIVE COACH gets **403**.
+
+**404 for no qualifying membership** — no membership, INACTIVE membership, SUSPENDED workspace and
+CLIENT-only membership are **indistinguishable** (DB §26). The single 403 is an ACTIVE COACH hitting
+PATCH, who already knows the Workspace exists.
+
+**`slug` and `status` are immutable through settings** — the serializer whitelists only the six
+documented fields, so both are structurally unreachable. `logo`/`profile_image` are **deferred to
+Story 4.3**, which defines their representation.
+
 
 Implement:
 
