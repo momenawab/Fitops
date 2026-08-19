@@ -29,9 +29,9 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | **Epic 04 — Coach Onboarding & Settings** (Stories 4.1–4.2 complete) |
-| **Current Story** | Story 4.2 — Workspace Settings — **COMPLETE and merged** (2026-08-18) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ Epic 01 · Epic 02 (except DEFERRED 2.8) · ✅ **Epic 03 COMPLETE (5/5)**. **Epic 04 in progress — Stories 4.1 and 4.2 complete**; 4.3 NOT started |
+| **Current Epic** | **Epic 04 — Coach Onboarding & Settings** (Stories 4.1–4.3 complete) |
+| **Current Story** | Story 4.3 — Branding — **COMPLETE and merged** (2026-08-19) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ Epic 01 · Epic 02 (except DEFERRED 2.8) · ✅ **Epic 03 COMPLETE (5/5)**. **Epic 04 in progress — Stories 4.1–4.3 complete**; 4.4 (final Epic 04 Story) NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-17 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -587,7 +587,144 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 4.2 is complete and merged; Story 4.3 (Branding) has not started and is the Story that adds **Pillow** and the API §21 image pipeline. Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+**No Story currently in progress.** Story 4.3 is complete and merged; Story 4.4 (Payment Methods) has not started and is the **final Epic 04 Story**. Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+
+---
+
+## Completed — Story 4.3
+
+### Story 4.3 — Branding  (Epic 04 — Coach Onboarding & Settings)
+
+**Status:** ✅ **COMPLETE** — **PR #18 merged as `59f2271d614b5b5f1039fbb0c6a0737b9deefcaa`** on
+2026-08-19. Verified: `origin/main` and local `main` both equal that SHA, `git merge-base
+--is-ancestor` confirms containment, and the merged diff contained exactly the **eight** intended
+files.
+
+**Endpoints:**
+
+| Route | Permission | Success body |
+|---|---|---|
+| `PATCH /api/v1/workspace/branding` | **OWNER-only** | exactly `{logo, profile_image, brand_color, description}` |
+| `POST /api/v1/workspace/logo` | **OWNER-only** | exactly `{logo}` |
+
+Both require **ACTIVE Workspace + ACTIVE Membership**, resolve through the caller's own
+`Membership` (**no `workspace_id` accepted from the request**), return an **indistinguishable 404**
+for no qualifying membership / INACTIVE membership / SUSPENDED workspace / CLIENT-only, and **403
+`PERMISSION_DENIED`** for an ACTIVE COACH. **API §6 states no permission line for either endpoint**,
+unlike the adjacent `/workspace` routes, so Story 4.2's OWNER-only rule was applied **by analogy
+rather than invented**.
+
+**⛔ APPROVED BRANDING DECISIONS (user-approved 2026-08-19):**
+
+1. **`logo` and `profile_image` stay `FileField`, NOT `ImageField`.** The **only** mention of
+   `ImageField` in the entire documentation set is the Blueprint's own Story 3.1 marker stating these
+   fields are `FileField`. Nothing requires `ImageField`, so Pillow's arrival did **not** trigger a
+   field change. Validation and processing live in the serializer/storage layer.
+2. **`GET`/`PATCH` `/workspace` remain EXACTLY the eleven keys** established by Stories 4.1/4.2.
+   **Neither Story 4.1 nor Story 4.2 test files were touched.** Guards in the new suite assert both
+   endpoints still return exactly eleven keys with **no** `logo`/`profile_image`.
+3. **`logo`/`profile_image` remain on the dedicated branding endpoints only.** Adding them to
+   `/workspace` would change an accepted whole-key-set contract; that must be an explicit decision,
+   never a side effect.
+4. **`workspace_logo_upload` = 20/hour per user** (Blueprint §2C decision **51**), applied to
+   **both** endpoints since both accept uploads. API §22 makes rate limiting **mandatory** for file
+   uploads but specifies **no number**, and this was the project's first upload endpoint so no
+   convention existed. Image processing is CPU-bound via Pillow, so the ceiling bounds **CPU abuse**.
+   **Not** derived from the OTP, login or email scopes.
+
+**API §21 IMAGE PIPELINE — implemented in full, not deferred to Epic 20.**
+`backend/common/storage/images.py`:
+
+| Step | Implementation |
+|---|---|
+| **MIME validation** | Declared `content_type` must be in the allow-list → else **400 `UNSUPPORTED_FILE_TYPE`** |
+| **Size validation** | Checked **before** decoding → **400 `FILE_TOO_LARGE`** |
+| **Pillow processing** | `verify()` then reopen — the correct Pillow idiom |
+| **WebP conversion** | Every stored image re-encoded as WebP at quality **82** |
+| **Resize** | Downscaled to max width **1600 px**, aspect preserved; **narrower images are not upscaled** |
+| **Thumbnail** | Generated at **400 px** **and persisted** beside the original |
+| **Cross-check** | The **Pillow-detected format's MIME** must match the **declared `content_type`** |
+
+The **cross-check** is the strongest control and went beyond the brief: a file lying about its type —
+declaring `image/png` while actually being something else — is **rejected rather than processed**.
+
+Pipeline defaults come from **CLAUDE.md §3**, which explicitly marks them *"adjustable during
+implementation"*: **10 MB** max upload · **1600 px** max processed width · **400 px** thumbnail ·
+**WebP quality 82**. No value was invented.
+
+Thumbnails are stored **alongside their original under a derived name** and located by convention:
+`Workspace` has no thumbnail column and this Story added **no field**, and API §21 requires metadata
+in PostgreSQL but does not require a database column per variant.
+
+**⛔ NO MIGRATION AND NO SCHEMA CHANGE.** `makemigrations --check --dry-run` exits **0**. Pillow was
+added to `requirements.txt` (`Pillow==11.3.0`) — the second dependency beyond the Story 1.x baseline,
+after `pyotp`. Pillow was already in the locked stack (CLAUDE.md §3), so this was **activation, not a
+new dependency decision**.
+
+**⚠️ TWO DEFECTS DISCOVERED DURING REVIEW — both worth carrying forward as lessons.**
+
+1. **The thumbnail was generated and then discarded.** All three serializer call sites returned only
+   `process_uploaded_image(value).image`, so the thumbnail was computed and **thrown away** — API
+   §21's thumbnail requirement was silently unmet while every other test passed. **Caught by AGY's
+   independent spec-driven test**, which asserted a thumbnail exists rather than trusting the
+   pipeline's return value. Fixed with a `save_thumbnail_beside` helper plus a
+   `_ThumbnailPersistingMixin` that records each validated field's thumbnail and writes it in
+   `update()` once the originals have their final storage names. **Lesson: a pipeline that
+   *produces* an artifact proves nothing — test that the artifact is *persisted*.**
+2. **The MIME allow-list had no test.** Removing it initially passed the **entire** suite, because a
+   non-image is already rejected by the decode path — the allow-list looked redundant. It is not:
+   it is the **only** control rejecting a **decodable image of a disallowed type**. A test was added
+   uploading a **real ICO** file with its correct `content_type` (`image/x-icon`, decodable by
+   Pillow, outside the allow-list); the mutation is now caught. **Lesson: when a mutation survives,
+   determine *why* before recording it as redundant — the survival here was a genuine coverage hole,
+   not defence in depth.**
+
+**MASTER REFACTOR DISCLOSED.** The shared workspace resolver was being invoked as
+`WorkspaceCreateView._resolve_active_coach_membership(self, request.user)` — passing **one view's
+`self` into another class's instance method**. It worked only because the method ignores `self`, and
+would break subtly the moment anyone used `self.` inside it, in security-critical resolution code.
+Hoisted to a module-level `resolve_active_coach_membership(user)` used by all four call sites;
+Stories 4.1/4.2 tests prove behaviour is unchanged.
+
+**Master-run, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / prod | **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** — no schema change |
+| Focused Story 4.3 tests | **0** — 45 pass |
+| Full suite (real PostgreSQL) | **0** — **453 tests** pass |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **0** |
+| GitHub Actions CI | **success** — run `32245169318` |
+
+**CI evidence.** The run log reads `Merge 672e53e83c98… into da800f8f02ed…` — the live PR head into
+the live base.
+
+**Mutation-checked — seven mutations, `manage.py check` returning 0 before every run and each
+confirmed to actually apply:**
+
+| Mutation | Result |
+|---|---|
+| WebP conversion replaced by PNG | **2 failures** — format read back from stored bytes |
+| MIME allow-list removed | ICO test fails (**test added during review**) |
+| Size check removed | **2** `FILE_TOO_LARGE` tests fail |
+| Resize disabled | resize + thumbnail tests fail |
+| Thumbnail not persisted | thumbnail test fails (**bug found this way**) |
+| OWNER guard removed | **3** authorization tests fail |
+| Throttle disabled | **2** rate-limit tests fail |
+
+`images.py`, `views.py` and `serializers.py` all restored **byte-identical**.
+
+**Test isolation.** `MEDIA_ROOT` is redirected to a temporary directory for upload tests, so the
+suite never writes uploaded files into the repository and `checks.sh` cannot fail on a dirty tree.
+
+**Delegation.** Codex (pipeline + endpoints) ∥ AGY (45 tests) on disjoint files; GLM-5.3 correctly
+idle. Codex could not run `manage.py check` (Pillow was not yet installed and workers may not run
+`pip`), which was anticipated in the brief; Master installed Pillow at integration. **AGY produced no
+class-attribute bound-method bug for the fourth consecutive Story.**
+
+**Next Story:** 4.4 — Payment Methods (**final Epic 04 Story**).
 
 ---
 
@@ -2973,72 +3110,77 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 | Field | Value |
 |---|---|
 | **Epic** | Epic 04 — Coach Onboarding & Settings |
-| **Story ID** | **Story 4.3** |
-| **Story title** | Branding — **adds Pillow + the API §21 image pipeline** |
+| **Story ID** | **Story 4.4** |
+| **Story title** | Payment Methods — **final Epic 04 Story** |
 
-**Do NOT start Story 4.3 automatically — user approval required. No implementation has begun.**
+**Do NOT start Story 4.4 automatically — user approval required. No implementation has begun.**
 
-**Blueprint §9 Story 4.3 + API §6:**
+**Blueprint §9 Story 4.4 + API §6:**
 
 ```
-PATCH /workspace/branding     -> Supports: Logo, Profile image, Brand color, Public description
-POST  /workspace/logo         -> multipart/form-data
+GET    /workspace/payment-methods
+POST   /workspace/payment-methods
+PATCH  /workspace/payment-methods/{id}
+DELETE /workspace/payment-methods/{id}
+
+Types: INSTAPAY · VODAFONE_CASH · BANK_TRANSFER · CUSTOM
 ```
 
-**Notes before starting Story 4.3 — carried from Story 4.2:**
+Documented POST body: `type`, `name`, `instructions`, `account_details`, `is_active`. An **optional
+QR code or image** may be attached; when included the request uses `multipart/form-data` with an
+`image` field, and **image handling follows API §21** — which Story 4.3 already implements.
+Permissions: **Coach/Owner**. Payment methods are **Workspace-scoped**.
 
-1. ⚠️ **This is the Story that adds Pillow.** Decision approved 2026-08-18: implement API §21
-   **properly** — process uploads through **Pillow**, convert to **WebP**, generate **thumbnails** —
-   and do **not** defer image processing to Epic 20. This is the first dependency added since
-   `pyotp` (Story 2.7). Pillow is already in the locked stack (CLAUDE.md §3), so this is activation,
-   not a new dependency decision.
-2. **`Workspace.logo` and `Workspace.profile_image` are `FileField`, NOT `ImageField`** (Stories 2.2
-   and 3.1 chose `FileField` precisely because Pillow was absent). Now that Pillow arrives, decide
-   deliberately whether to keep `FileField` — **changing to `ImageField` would require a migration**
-   and is not required by any document. **Recommended: keep `FileField`** and do the validation and
-   processing in the serializer/service layer, so no schema change is needed. Surface it if you
-   disagree.
-3. **Story 4.2 deliberately excluded `logo`/`profile_image` from the eleven-key response.** Story 4.3
-   **owns defining their representation** (URL? relative path? nested object with thumbnail?). Once
-   defined, decide whether `GET`/`PATCH /workspace` should also expose them — that would change the
-   Story 4.1/4.2 response contract and its whole-key-set tests, so it must be an **explicit,
-   disclosed** change, not a silent one.
-4. **API §21 rules are mandatory:** validate MIME type, validate size, process through Pillow,
-   convert to WebP where appropriate, generate thumbnails where appropriate, store on Hetzner
-   (via the storage abstraction), keep metadata in PostgreSQL, and **never expose raw filesystem
-   paths**. Authorized access goes through permission-checked endpoints.
-5. **`backend/common/storage/` exists as an empty package** — the storage abstraction belongs there,
-   not in the app.
-6. **Permissions:** follow the Story 4.2 pattern — resolve through the caller's own `Membership`,
-   require **ACTIVE Workspace + ACTIVE Membership**, 404 for no qualifying membership, and decide
-   OWNER-vs-Coach from API §6's wording for these specific endpoints rather than copying 4.2's
-   PATCH rule by reflex.
-7. **Rate limiting:** API §22 **does** list **file uploads** as requiring rate limiting. Unlike
-   Stories 4.1/4.2, a throttle is **mandatory** here. No number is documented — surface it as a
-   decision rather than inventing one, and do not borrow the OTP or login rates.
-8. **Do NOT touch** `PaymentMethod` (Story 4.4), `CheckInSchedule`, `WorkspaceArchive`, billing/trial
-   (Epic 22), Client OTP (2.8) or the `/auth/me` Role field (2.9).
-9. **Keep the `staticmethod()` warning at the top of every AGY test brief** — it has now held for
-   three consecutive Stories after costing rework in 3.3 and 3.4.
-10. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 4.3.
+**Notes before starting Story 4.4 — carried from Story 4.3:**
 
-**Epic 04 remaining:** 4.1 ✅ → 4.2 ✅ → **4.3 Branding (adds Pillow)** → 4.4 Payment Methods
-(also needs the image pipeline for its optional `PaymentMethod.image`).
+1. **`PaymentMethod` is fully specified — ten fields** (DB Architecture + ERD agree):
+   `id, workspace_id, type, name, instructions, account_details, image, is_active, created_at,
+   updated_at`. It lives in the **`workspaces`** app. **This Story DOES need a model + migration**,
+   unlike 4.2 and 4.3.
+2. **It must inherit `WorkspaceScopedModel`** (Story 3.4) so tenant isolation is inherited rather
+   than reimplemented, and its queries must go through `TenantQuerySet`. Do **not** hand-roll
+   workspace filtering.
+3. **Reuse the Story 4.3 image pipeline verbatim** for the optional `image` —
+   `common.storage.process_uploaded_image` and `save_thumbnail_beside` already do MIME validation,
+   size validation, WebP conversion, resize, thumbnail persistence and the content_type
+   cross-check. **Do not write a second pipeline.**
+4. **The upload throttle already exists** — `workspace_logo_upload` at 20/hour (§2C decision 51).
+   Decide deliberately whether POST/PATCH with an image share that scope or need their own; if a new
+   scope is wanted, its rate is a **decision to surface**, not to invent.
+5. ⚠️ **API §6 says "Coach/Owner" for payment methods — NOT "Owner-only".** That differs from
+   `PATCH /workspace` (4.2) and the branding endpoints (4.3). **Do not copy the OWNER-only rule by
+   reflex** — read §6's wording for these specific endpoints and apply exactly what it says.
+6. **`{id}` in the path makes these the first object-level endpoints.** Object ownership must be
+   enforced: a payment method belonging to another Workspace must be **invisible** (404, never 403)
+   per DB §26. Story 3.4's ownership predicates and `TenantQuerySet` exist for exactly this.
+7. **`DELETE` semantics are undocumented** — hard delete or soft via `is_active`? The model already
+   has `is_active`, and DELETE is listed separately from PATCH, which suggests a real delete. If
+   genuinely ambiguous, **surface it as one decision** rather than guessing.
+8. **Response shapes are undocumented.** Follow the Epic 04 pattern: derive the shape from the
+   documented model fields, exclude nothing arbitrarily, and disclose the choice.
+9. **Do NOT touch** `CheckInSchedule`, `WorkspaceArchive`, billing/trial (Epic 22), Client OTP (2.8)
+   or the `/auth/me` Role field (2.9).
+10. **Keep the `staticmethod()` warning at the top of every AGY test brief** — four consecutive
+    clean Stories since it was added.
+11. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 4.4.
+
+**Epic 04:** 4.1 ✅ → 4.2 ✅ → 4.3 ✅ → **4.4 Payment Methods (final)**.
 
 **Still unblocked, each needing its OWN Story — do NOT fold into Epic 04:** Story 2.8 (Client OTP)
 and the `Role` field on `GET /auth/me`. `test_session_api.py` asserts `role` is currently **absent**,
 so that test must change deliberately when the field is added.
 
-**Standing verification rules (Stories 3.1–4.2):** baseline from a copy held **outside** the working
+**Standing verification rules (Stories 3.1–4.3):** baseline from a copy held **outside** the working
 tree (or `git checkout` for committed files); every mutation must be **schema- and check-consistent**
 (`manage.py check` clean) so it fails for the intended reason; **a non-zero exit is not evidence of
-detection** — confirm the intended test failed; when a mutation is deliberately not caught by the
-Story under test, verify the owning Story still catches it; **an atomicity test that fails at the
-first step proves nothing** — it must fail after the first write; **when Master makes an undocumented
-design decision, Master must add the test that locks it in**; **always run the FULL suite before
-declaring a Story green — the focused run missed a real regression in Story 4.2**; after any session
-restart, **verify worker branches for actual commits** before assuming loss or completion; re-run the
-full suite after restoring and verify byte-identical restoration.
+detection** — confirm the intended test failed; **when a mutation survives, determine WHY before
+calling it redundant** — in Story 4.3 a "redundant" survival was a real coverage hole; **a pipeline
+that produces an artifact proves nothing — test that the artifact is persisted**; an atomicity test
+that fails at the first step proves nothing; **when Master makes an undocumented design decision,
+Master must add the test that locks it in**; **always run the FULL suite before declaring a Story
+green**; isolate `MEDIA_ROOT` in any test that writes files; after a session restart, verify worker
+branches for actual commits; re-run the full suite after restoring and verify byte-identical
+restoration.
 
 
 **Carry-ins still live:**

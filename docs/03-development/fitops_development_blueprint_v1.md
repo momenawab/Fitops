@@ -123,6 +123,7 @@ documentation stated them before this entry.
 | 48 | **Attempt exhaustion → `OTP_RATE_LIMITED` with HTTP 429.** No `OTP_ATTEMPTS_EXCEEDED` code is to be invented. | API §2's closed error-code list contains no code for attempt exhaustion, while the Blueprint requires an attempt limit. Inventing a code is forbidden, so exhaustion reuses an existing documented code. |
 | 49 | **`LoginOTP.user_id` is non-null.** | Neither DB Architecture nor the ERD annotates nullability. The documentation does flag nullability when intended (`Application.user_id` is explicitly nullable "because an application can precede any Membership"); no such note exists for `LoginOTP`. Non-null composes correctly with the mandated anti-enumeration behaviour: no `User` means no OTP row, and the endpoint still returns a generic success. |
 | 50 | **`Membership.status` = `ACTIVE` / `INACTIVE`, default `ACTIVE`.** | No authoritative document specifies `Membership.status` values. `Workspace` §6 carries an explicit `Statuses:` block; `Membership` §7 carries `Constraint:` and `Roles:` blocks but no equivalent — while tenant security (API §57, §59, §2031; DB §1713; CLAUDE.md §10 rule 5) gates on an "active Membership". Two values cover every documented behaviour; richer lifecycles such as `PENDING`/`REMOVED` would invent an invitation/removal flow no document describes. |
+| 51 | **File-upload rate limit** — scope `workspace_logo_upload` = **20/hour** per user, applied to `PATCH /workspace/branding` and `POST /workspace/logo`. | API §22 makes rate limiting **mandatory** for file uploads but specifies **no number**, and no other document defines one. This is the project's first upload endpoint, so no existing upload convention existed to follow. Image processing is CPU-bound via Pillow, so the ceiling bounds CPU abuse rather than email cost. **Not** derived from the OTP, login or email scopes. |
 
 Rate limits 44 and 45 were chosen for this flow specifically. They are **not** derived from the
 `login` (10/minute) or `email_resend` (3/minute) scopes, which govern unrelated flows.
@@ -1029,7 +1030,31 @@ PATCH /workspace
 
 ---
 
-## Story 4.3 — Branding
+## Story 4.3 — Branding — ✅ COMPLETE (2026-08-19)
+
+**Both endpoints are OWNER-only**, require **ACTIVE Workspace + ACTIVE Membership**, resolve through
+the caller's own `Membership` (no `workspace_id` accepted), return an **indistinguishable 404** for
+no qualifying membership and **403** for an ACTIVE COACH. API §6 states no permission for these two
+endpoints, so Story 4.2's rule was applied by analogy rather than invented.
+
+**Response shapes (user-approved 2026-08-19):** `PATCH /workspace/branding` returns exactly
+`{logo, profile_image, brand_color, description}`; `POST /workspace/logo` returns exactly `{logo}`.
+⛔ **`GET`/`PATCH`/`POST /workspace` remain EXACTLY the eleven keys** of Stories 4.1/4.2 —
+`logo`/`profile_image` live only on these branding endpoints. **Do not add them to `/workspace`.**
+
+**`logo` and `profile_image` stay `FileField`, NOT `ImageField`.** No authoritative document
+requires `ImageField`; the only mention in the doc set states they are `FileField`. Validation and
+processing live in the serializer/storage layer. **No migration, no schema change.**
+
+**API §21 pipeline (implemented, not deferred):** MIME validation · size validation · Pillow
+processing · **WebP conversion** · resize · **thumbnail generation and persistence** · plus a
+**cross-check of the Pillow-detected format against the declared `content_type`**, so a file lying
+about its type is rejected. Defaults from CLAUDE.md §3 (explicitly adjustable): 10 MB · 1600 px ·
+400 px thumbnail · WebP quality 82.
+
+**Rate limiting:** scope `workspace_logo_upload` at **20/hour** — a project decision (§2C 51), since
+API §22 mandates rate limiting for file uploads but specifies no number.
+
 
 Implement:
 
