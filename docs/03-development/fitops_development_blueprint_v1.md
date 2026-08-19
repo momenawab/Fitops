@@ -1123,7 +1123,30 @@ No automated payment gateway integration in Phase 1.
 
 # 10. EPIC 05 — Packages
 
-## Story 5.1 — Package CRUD
+## Story 5.1 — Package CRUD — ✅ COMPLETE (2026-08-19)
+
+**`Package` lives in the `coaching` app** (ERD §18) — its first model. Exactly the eleven documented
+fields; `price` a `DecimalField` (decimal string), `features` a `JSONField` array of strings.
+
+⛔ **`Package` declares its OWN explicit UUID primary key.** `WorkspaceScopedModel` supplies no
+`id`; inheriting a `BigAutoField` would expose integer ids in URLs, violating **API §25 rule 13**.
+**Every `WorkspaceScopedModel` subclass must do the same.**
+
+**Permission is `Coach/Owner` on all five endpoints** (API §8) — matching Story 4.4 and
+**deliberately unlike Stories 4.2/4.3**, which are OWNER-only. `resolve_active_coach_membership`
+already permits OWNER or COACH, so **no extra role guard is added**; adding one would be a
+regression.
+
+**Isolation:** every query and object lookup goes through `TenantQuerySet.for_workspace(...)`, and
+the `is_active` filter and `search` are applied **after** scoping. A package in another Workspace is
+**invisible** — 404 identical to a non-existent id, **never 403**.
+
+⛔ **`DELETE` is a HARD delete → 204** (user-approved 2026-08-19). **No `archived_at`/`deleted_at`
+field; `is_active` is NOT reused as a deletion mechanism.** API §8 prefers soft deletion *"when the
+package has historical orders"*, but `Order` (Epic 08), `Application` (Epic 07) and `Subscription`
+(Epic 09) do not exist. **When those Epics land, DELETE semantics MUST be revisited as a separate
+architectural decision.**
+
 
 Implement:
 

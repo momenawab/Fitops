@@ -29,9 +29,9 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | ✅ **Epic 04 — Coach Onboarding & Settings — COMPLETE** (2026-08-19) |
-| **Current Story** | Story 4.4 — Payment Methods — **COMPLETE and merged** (2026-08-19). Epic 04 finished |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ Epic 01 · Epic 02 (except DEFERRED 2.8) · ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. **Epic 05 (Packages) NOT started** |
+| **Current Epic** | **Epic 05 — Packages** (Story 5.1 complete) |
+| **Current Story** | Story 5.1 — Package CRUD — **COMPLETE and merged** (2026-08-19) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ Epic 01 · Epic 02 (except DEFERRED 2.8) · ✅ **Epic 03 COMPLETE (5/5)**. ✅ Epic 04 COMPLETE (4/4). **Epic 05 in progress — Story 5.1 complete**; 5.2 NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-17 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -587,7 +587,148 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** ✅ **Epic 04 is COMPLETE.** Epic 05 (Packages) has not started. Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+**No Story currently in progress.** Story 5.1 is complete and merged; Story 5.2 (Package State) has not started. Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+
+---
+
+## Completed — Story 5.1
+
+### Story 5.1 — Package CRUD  (Epic 05 — Packages)
+
+**Status:** ✅ **COMPLETE** — **PR #20 merged as `7f1d0d4cdfcbd5d5a76366d12a3f2f23b9198b58`** on
+2026-08-19. Verified: `origin/main` and local `main` both equal that SHA, `git merge-base
+--is-ancestor` confirms containment, and the merged diff contained exactly the **seven** intended
+files.
+
+**Endpoints — all five `Coach/Owner`:**
+
+| Route | Success |
+|---|---|
+| `GET /api/v1/packages` | **200** — paginated, searchable, filterable |
+| `POST /api/v1/packages` | **201** |
+| `GET /api/v1/packages/{id}` | **200** |
+| `PATCH /api/v1/packages/{id}` | **200** |
+| `DELETE /api/v1/packages/{id}` | **204** |
+
+**`Package` SCHEMA — exactly the ELEVEN documented fields** (DB §11 and the ERD agree). It lives in
+the **`coaching`** Django app (ERD §18, CLAUDE.md §5) — **not** `workspaces` — and is that app's
+**first model**:
+
+```text
+id · workspace_id · name · description · price · currency · duration_days · features
+is_active · created_at · updated_at
+```
+
+Field types: `price` → **`DecimalField(max_digits=10, decimal_places=2)`**, serialised as a
+**decimal string** per API §1. `features` → **`JSONField(default=list)`** holding a JSON array of
+strings. `duration_days` → `PositiveIntegerField`. `is_active` → `BooleanField(default=True)`.
+**No field beyond the eleven; no deletion field.**
+
+**⛔ EXPLICIT UUID PRIMARY KEY — required for `Package` and EVERY `WorkspaceScopedModel` subclass.**
+
+`Package` declares its own
+`id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)`.
+`WorkspaceScopedModel` supplies **no `id`**, so without this the model inherits Django's default
+**`BigAutoField`** and exposes **integer ids in URLs**, violating **API §25 rule 13** — *"Use UUIDs
+for externally exposed resource identifiers"*. This is the exact bug caught in Story 4.4, **applied
+here rather than repeated**. The route correspondingly uses `<uuid:package_id>`.
+
+⚠️ **Still true for every future workspace-scoped model** — `Application`, `Order`, `Payment`,
+`Subscription`, `TrainingPlan`, `NutritionPlan`, `PlanAssignment`, `CheckIn`, `ProgressPhoto`,
+`CoachFeedback`, `Notification`, `CheckInSchedule`. `WorkspaceScopedModel` was **not** modified.
+
+**PERMISSIONS — `Coach/Owner` on all five endpoints** (API §8). An ACTIVE **OWNER or COACH** is
+authorised. ⚠️ This matches Story 4.4 and is **deliberately unlike Stories 4.2/4.3**, which are
+OWNER-only. Because `resolve_active_coach_membership` already permits OWNER or COACH, **no extra
+role guard was added** — adding one would look cautious but would be a **regression**. Tests assert a
+COACH is authorised on all five, and mutation testing covers it.
+
+**WORKSPACE ISOLATION.** Every query and object lookup goes through
+`TenantQuerySet.for_workspace(...)`; there is **no unscoped `Package.objects.get(...)`**. A package
+in another Workspace is **invisible** — **404 byte-identical to a random non-existent id**, and
+**never 403**, which would reveal the object exists (DB §26). The **`is_active` filter and `search`
+are applied AFTER workspace scoping**, so a matching package name in another tenant cannot surface
+through the list endpoint — the subtle way a list route leaks.
+
+List behaviour: **pagination** reuses the existing `FitOpsPageNumberPagination`
+(`{count, next, previous, results}`, `PAGE_SIZE` 20 — no new paginator); **`?is_active=true|false`**
+filters; **`?search=`** is a case-insensitive match on **`name`** only, the minimal defensible
+reading of §8's unqualified "Search".
+
+**⛔ DELETE IS A HARD DELETE → 204 (user-approved 2026-08-19).**
+
+**No `archived_at`, no `deleted_at`, and `is_active` is NOT reused as a deletion mechanism** —
+`is_active` belongs to Story 5.2's activate/deactivate, and reusing it would conflate two concepts
+and make DELETE redundant with deactivate.
+
+API §8 says *"Prefer soft deletion/archive **when the package has historical orders**."* That
+precondition **cannot be satisfied today**: `Order` (Epic 08), `Application` (Epic 07) and
+`Subscription` (Epic 09) all reference `package_id` and **none exist**. Hard delete is therefore
+**fully compliant now** and invents no field.
+
+⚠️ **REVISIT OBLIGATION — when `Order`, `Application` or `Subscription` land (Epics 07–09), DELETE
+semantics MUST be revisited as a separate architectural decision.** Adding soft deletion later means
+adding a field to a locked schema, so it needs an explicit decision, not an inference. Tests assert
+that after deleting an **active** package **no row with that id survives in any state**, so a
+silent switch to soft delete fails loudly.
+
+**MASTER FIX DISCLOSED — `features` `required=False`.** The serializer declared `features` as an
+explicit `serializers.ListField(...)`, which **drops the `required=False` that `ModelSerializer`
+infers from the model's `default=list`** — making an optional field mandatory, so a `POST` omitting
+`features` returned **400 instead of 201**. Caught by AGY's independent test. Fixed by adding
+`required=False` with a comment naming the trap. **Lesson: an explicit serializer field override
+discards the model-derived defaults `ModelSerializer` would otherwise supply.**
+
+**Master-run, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / prod | **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** |
+| `migrate` (real PostgreSQL 16) | **0** — `coaching.0001_initial` |
+| Focused Story 5.1 tests | **0** — 51 pass |
+| Full suite | **0** — **547 tests** pass |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **0** |
+| GitHub Actions CI | **success** — run `32252157230` |
+
+**CI evidence.** The run log reads `Merge 53307bc062c9… into b5fca98c33ce…` — the live PR head into
+the live base.
+
+**MUTATION EVIDENCE — six mutations, each verified to actually apply AND to execute:**
+
+| Mutation | Result |
+|---|---|
+| Detail lookup unscoped (**cross-tenant access**) | **5 failures** |
+| List query unscoped | **2** list tests fail |
+| Soft delete instead of hard delete | **2** delete tests fail |
+| `search` ignored | search test fails |
+| Create assigns the wrong Workspace | **2** tests fail |
+| **UUID pk removed** | **20 failures** |
+
+`views.py`, `models.py` and `0001_initial.py` restored **byte-identical**.
+
+**⚠️ THE UUID-PK MUTATION TOOK THREE ATTEMPTS — the "non-zero exit is not detection" rule earned its
+keep twice in one Story:**
+
+1. **Attempt 1** exited non-zero with **zero** test failures — a **stale test database** left by an
+   interrupted run (`EOFError` on the "delete the test database?" prompt). Not detection.
+2. **Attempt 2**, run with `--noinput`, also exited non-zero with **zero** failures — this time
+   `django.db.utils.ProgrammingError: cannot cast type uuid to bigint`, a **migration error before
+   any test ran**. The mutation was **not executable** against the existing schema. Not detection.
+3. **Attempt 3** regenerated `coaching`'s single migration from scratch so the schema was
+   consistent (a fresh table rather than an impossible column cast). The mutation then **executed**
+   and was caught by **20 tests**.
+
+**Lesson reinforced: confirm a mutation both APPLIES and EXECUTES before recording it as caught.**
+Reporting either earlier attempt as a pass would have been false.
+
+**Delegation.** Codex (model + CRUD) ∥ AGY (51 tests) on disjoint files; GLM-5.3 correctly idle.
+Codex needed **one** fix (the `features` default); **AGY needed none** and produced no
+class-attribute bound-method bug for the **sixth consecutive Story**. No model-set architecture
+guards needed updating, because `Package` is the `coaching` app's first model.
+
+**Next Story:** 5.2 — Package State (`POST /packages/{id}/activate`, `.../deactivate`).
 
 ---
 
@@ -3270,53 +3411,64 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 
 | Field | Value |
 |---|---|
-| **Epic** | **Epic 05 — Packages** |
-| **Story ID** | Epic 05, first Story (read Blueprint §10 before planning) |
-| **Status** | NOT started |
+| **Epic** | Epic 05 — Packages |
+| **Story ID** | **Story 5.2** |
+| **Story title** | Package State |
 
-**Do NOT start Epic 05 automatically — user approval required. No implementation has begun.**
+**Do NOT start Story 5.2 automatically — user approval required. No implementation has begun.**
 
-**Where the project stands:** ✅ Epic 01 · Epic 02 complete **except DEFERRED Story 2.8** ·
-✅ Epic 03 (5/5) · ✅ **Epic 04 (4/4)**. Backend suite: **496 tests**, all gates green.
+**Blueprint §10 Story 5.2 + API §8:**
 
-**Notes before starting Epic 05 — carried from Epic 04:**
+```
+POST /packages/{id}/activate
+POST /packages/{id}/deactivate
+```
 
-1. ⛔ **`Package` is workspace-scoped** (ERD §28), so it **must inherit `WorkspaceScopedModel`** and
-   **must declare its own explicit UUID primary key**. The abstract base supplies no `id`, and
-   inheriting a `BigAutoField` would expose integer ids in URLs, violating **API §25 rule 13**. This
-   bug was caught in Story 4.4 — do not repeat it.
-2. **Reuse Epic 03/04 infrastructure, never rebuild it:** `resolve_active_coach_membership` for the
-   non-slug coach route, `TenantQuerySet.for_workspace(...)` for every query and object lookup, and
-   `common.storage.process_uploaded_image` if any image is involved.
-3. **Object-level endpoints must be invisible across tenants** — 404 identical to a non-existent id,
-   **never 403**. Scope every lookup; no unscoped `objects.get(pk=...)`.
-4. **Read API §6/§8 for the exact permission wording per endpoint.** Epic 04 proved these differ:
-   `PATCH /workspace` and branding are **OWNER-only**, while payment methods are **Coach/Owner**.
-   **Do not copy a permission rule by reflex** — read what §6 says for the specific endpoint.
-5. **Rate limiting only where API §22 lists it.** It does **not** list package endpoints; it does
-   list file uploads. Do not add throttles that no document requires, and do not invent a rate.
-6. ⚠️ **A 401 needs an `APIException` subclass, not `AuthenticationFailed`** — DRF coerces 401 → 403
+API §8 documents these two headings with **no request body, no response shape and no status code**.
+
+**Notes before starting Story 5.2 — carried from Story 5.1:**
+
+1. **`is_active` already exists on `Package` and defaults to `True`.** Story 5.2 owns toggling it.
+   **No model change and no migration should be needed** — `makemigrations --check` must exit 0.
+2. **Reuse Story 5.1's plumbing verbatim:** `resolve_active_coach_membership`,
+   `PackageDetailView._package`-style tenant-scoped lookup, and `PackageSerializer`. **Do not write
+   a second resolver, permission class, or lookup helper.**
+3. **Permission is `Coach/Owner`** — the same Package API block as 5.1. Do **not** add an OWNER-only
+   guard.
+4. **Object isolation applies identically:** a package in another Workspace must return **404**,
+   byte-identical to a non-existent id, **never 403**.
+5. **Response shape is undocumented.** Follow the Story 5.1 pattern: return the same ten-key package
+   representation, and disclose the choice. Decide deliberately whether activating an
+   already-active package is a 200 no-op or an error — **no document says**, so the non-inventing
+   choice is an **idempotent 200**; surface it if you disagree.
+6. **`is_active` must remain settable via `PATCH /packages/{id}`** (Story 5.1 already allows it).
+   These endpoints are an additional path, not a replacement — do not remove it from PATCH.
+7. **No rate limiting** — API §22 does not list package endpoints.
+8. ⚠️ **A 401 needs an `APIException` subclass, not `AuthenticationFailed`** — DRF coerces 401 → 403
    under `SessionAuthentication`.
-7. **Adding a concrete model to an app changes its model-set guards.** Expect to update the
-   architecture guards mechanically, preserving each guard's original intent.
-8. **Keep the `staticmethod()` warning at the top of every AGY test brief** — five consecutive clean
+9. **Keep the `staticmethod()` warning at the top of every AGY test brief** — six consecutive clean
    Stories since it was added.
-9. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Epic 05.
+10. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 5.2.
+
+**Epic 05:** 5.1 ✅ → **5.2 Package State** → 5.3 Duplicate Package.
+All three touch the same `coaching/{serializers,views,urls}.py`, so they must run **sequentially**;
+parallelism exists only within a Story (Codex ∥ AGY).
 
 **Still unblocked, each needing its OWN Story — do NOT fold into Epic 05:** Story 2.8 (Client OTP)
 and the `Role` field on `GET /auth/me`.
 
-**Standing verification rules (Stories 3.1–4.4):** baseline from a copy held **outside** the working
+**Standing verification rules (Stories 3.1–5.1):** baseline from a copy held **outside** the working
 tree (or `git checkout` for committed files); every mutation must be **schema- and check-consistent**
-(`manage.py check` clean) so it fails for the intended reason; **a non-zero exit is not evidence of
-detection** — confirm the intended test failed; **when a mutation survives, determine WHY before
-calling it redundant**; **a pipeline that produces an artifact proves nothing — test that the
-artifact is persisted**; an atomicity test that fails at the first step proves nothing; **when Master
-makes an undocumented design decision, Master must add the test that locks it in**; **when a fix does
-not work, verify the assumption rather than iterating on the symptom** (Story 4.4's UUID pk);
-**always run the FULL suite before declaring a Story green**; isolate `MEDIA_ROOT` in any test that
-writes files; after a session restart, verify worker branches for actual commits; re-run the full
-suite after restoring and verify byte-identical restoration.
+so it fails for the intended reason; **a non-zero exit is not evidence of detection — confirm the
+mutation both APPLIES and EXECUTES, and that the intended test failed** (Story 5.1 needed three
+attempts: a stale test DB, then an impossible `uuid`→`bigint` cast, then a regenerated migration);
+**when a mutation survives, determine WHY before calling it redundant**; **a pipeline that produces
+an artifact proves nothing — test that the artifact is persisted**; an atomicity test that fails at
+the first step proves nothing; **when Master makes an undocumented design decision, Master must add
+the test that locks it in**; **when a fix does not work, verify the assumption rather than iterating
+on the symptom**; **always run the FULL suite before declaring a Story green**; isolate `MEDIA_ROOT`
+in any test that writes files; after a session restart, verify worker branches for actual commits;
+re-run the full suite after restoring and verify byte-identical restoration.
 
 
 **Carry-ins still live:**
