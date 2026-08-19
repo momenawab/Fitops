@@ -417,8 +417,9 @@ class WorkspaceScopedModelContractTests(BaseTenantQueryInfrastructureTestCase):
     def test_workspace_scoped_model_contributes_no_models_to_real_apps(self):
         """Asserts workspaces and accounts app model sets are completely unchanged.
 
-        Guards that WorkspaceScopedModel is purely abstract and contributes no concrete
-        table or model to workspaces or accounts.
+        Guards that WorkspaceScopedModel is purely abstract: it contributes no model of its
+        own. Concrete subclasses (PaymentMethod, Story 4.4) are expected members of the set;
+        the abstract base itself must never appear.
         """
         workspaces_app = apps.get_app_config("workspaces")
         concrete_workspaces_models = {
@@ -426,8 +427,8 @@ class WorkspaceScopedModelContractTests(BaseTenantQueryInfrastructureTestCase):
         }
         self.assertSetEqual(
             concrete_workspaces_models,
-            {"Workspace"},
-            "workspaces app must expose only the 'Workspace' model.",
+            {"Workspace", "PaymentMethod"},
+            "workspaces must expose exactly its approved concrete models.",
         )
 
         accounts_app = apps.get_app_config("accounts")

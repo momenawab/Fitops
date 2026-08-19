@@ -18,7 +18,7 @@ Validates:
 - Method dispatch: PUT and DELETE return 405 Method Not Allowed.
 - Story 4.1 regression: POST /api/v1/workspace continues to allow single workspace creation (201)
   and reject subsequent creation attempts (403).
-- Architecture guards: workspaces app defines {"Workspace"}, billing defines no models,
+- Architecture guards: workspaces app model set is the approved one, billing defines no models,
   and responses contain no branding or billing keys.
 """
 
@@ -986,12 +986,12 @@ class WorkspaceSettingsArchitectureGuardTests(TestCase):
     """Verifies architectural boundaries across apps and prevents cross-Epic schema leakage."""
 
     def test_workspaces_app_exposes_only_workspace_model(self):
-        """Asserts the workspaces app defines exactly {"Workspace"} for Story 4.2."""
+        """Asserts the workspaces app defines exactly the approved model set."""
         workspaces_app = apps.get_app_config("workspaces")
         concrete_model_names = {model._meta.object_name for model in workspaces_app.get_models()}
         self.assertEqual(
             concrete_model_names,
-            {"Workspace"},
+            {"Workspace", "PaymentMethod"},
             "workspaces app must expose only {'Workspace'}.",
         )
 

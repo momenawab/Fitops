@@ -22,7 +22,8 @@ Validates:
 - Rate limiting: scope 'workspace_logo_upload' enforced at 20/hour on both upload endpoints (429
   RATE_LIMITED on the 21st request); unrelated endpoints (e.g. GET /workspace) remain unthrottled.
 - Contract preservation & architecture guards: GET and PATCH /api/v1/workspace preserve exactly
-  eleven response keys without logo or profile_image; workspaces app defines {"Workspace"}; billing
+  eleven response keys without logo or profile_image; workspaces model set is approved;
+  billing
   defines no models; disallowed HTTP methods return 405 Method Not Allowed.
 """
 
@@ -1295,7 +1296,7 @@ class WorkspaceBrandingContractPreservationAndArchitectureTests(BaseWorkspaceBra
         concrete_model_names = {model._meta.object_name for model in workspaces_app.get_models()}
         self.assertEqual(
             concrete_model_names,
-            {"Workspace"},
+            {"Workspace", "PaymentMethod"},
             "workspaces app must expose only {'Workspace'}.",
         )
 

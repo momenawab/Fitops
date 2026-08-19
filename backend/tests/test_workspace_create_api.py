@@ -15,7 +15,7 @@ Validates:
 - Field validation: missing name, slug, currency, timezone, or empty payload return 400
   VALIDATION_ERROR with field-level details
 - Cross-Epic architecture guards: audit defines exactly {"AuditLog"}, workspaces defines
-  {"Workspace"}, billing defines no models, and no subscription/trial keys in response
+  the approved model set, billing defines no models, and no subscription/trial keys in response
 """
 
 import uuid
@@ -806,12 +806,12 @@ class WorkspaceCreateArchitectureGuardTests(TestCase):
         )
 
     def test_workspaces_app_exposes_only_workspace_model(self):
-        """Asserts the workspaces app defines exactly {"Workspace"} for Story 4.1."""
+        """Asserts the workspaces app defines exactly the approved model set."""
         workspaces_app = apps.get_app_config("workspaces")
         concrete_model_names = {model._meta.object_name for model in workspaces_app.get_models()}
         self.assertEqual(
             concrete_model_names,
-            {"Workspace"},
+            {"Workspace", "PaymentMethod"},
             "workspaces app must expose only {'Workspace'}.",
         )
 

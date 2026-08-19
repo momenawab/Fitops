@@ -32,3 +32,26 @@ class Workspace(models.Model):
 
     def __str__(self):
         return self.name
+
+
+from common.models.tenant import WorkspaceScopedModel  # noqa: E402
+
+
+class PaymentMethod(WorkspaceScopedModel):
+    """A workspace-owned method through which clients can pay."""
+
+    class Type(models.TextChoices):
+        INSTAPAY = "INSTAPAY", "InstaPay"
+        VODAFONE_CASH = "VODAFONE_CASH", "Vodafone Cash"
+        BANK_TRANSFER = "BANK_TRANSFER", "Bank Transfer"
+        CUSTOM = "CUSTOM", "Custom"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    type = models.CharField(max_length=13, choices=Type.choices)
+    name = models.CharField(max_length=255)
+    instructions = models.TextField()
+    account_details = models.TextField()
+    image = models.FileField(upload_to="payment_method_images/", blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)

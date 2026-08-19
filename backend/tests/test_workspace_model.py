@@ -10,7 +10,7 @@ Validates:
 - Workspace creation with minimal required fields and optional field omission
 - String representation containing workspace name
 - Auto-managed timestamp behavior (created_at preserved, updated_at advanced on save)
-- Architecture guards: workspaces defines {"Workspace"}, accounts unchanged
+- Architecture guards: workspaces model set is exactly the approved one, accounts unchanged
 """
 
 import time
@@ -279,7 +279,7 @@ class WorkspaceArchitectureGuardTests(TestCase):
         concrete_model_names = {model._meta.object_name for model in workspaces_app.get_models()}
         self.assertSetEqual(
             concrete_model_names,
-            {"Workspace"},
+            {"Workspace", "PaymentMethod"},
             "workspaces app must expose only the 'Workspace' model in Story 3.1.",
         )
 
