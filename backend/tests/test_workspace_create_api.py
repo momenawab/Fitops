@@ -188,10 +188,14 @@ class WorkspaceCreateEndpointAccessTests(BaseWorkspaceCreateApiTestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_disallowed_http_methods_return_405_method_not_allowed(self):
-        """Asserts non-POST HTTP methods return 405 Method Not Allowed for authenticated users."""
+        """Asserts unsupported HTTP methods return 405 for authenticated users.
+
+        GET and PATCH were added to this path by Story 4.2 (Workspace Settings) and are
+        documented in API §6, so they are no longer 405. PUT and DELETE remain unsupported.
+        """
         user = self._create_user(email="methodcheck@example.com")
         self.client.force_authenticate(user=user)
-        for method in ["get", "put", "patch", "delete"]:
+        for method in ["put", "delete"]:
             with self.subTest(http_method=method):
                 client_method = getattr(self.client, method)
                 response = client_method(WORKSPACE_URL)

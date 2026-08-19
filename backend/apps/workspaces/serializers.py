@@ -2,6 +2,8 @@
 
 from rest_framework import serializers
 
+from .models import Workspace
+
 
 class WorkspaceCreateSerializer(serializers.Serializer):
     """Validate the fields accepted by workspace onboarding."""
@@ -26,3 +28,18 @@ class WorkspaceSerializer(serializers.Serializer):
     status = serializers.CharField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
+
+
+class WorkspaceSettingsSerializer(serializers.ModelSerializer):
+    """Validate the mutable settings accepted by the workspace endpoint."""
+
+    class Meta:
+        model = Workspace
+        fields = (
+            "name",
+            "description",
+            "brand_color",
+            "currency",
+            "whatsapp_number",
+            "timezone",
+        )

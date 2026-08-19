@@ -10,7 +10,11 @@ from apps.accounts.models import Membership
 from apps.audit.models import AuditLog
 
 from .models import Workspace
-from .serializers import WorkspaceCreateSerializer, WorkspaceSerializer
+from .serializers import (
+    WorkspaceCreateSerializer,
+    WorkspaceSerializer,
+    WorkspaceSettingsSerializer,
+)
 
 
 class WorkspaceConflict(exceptions.APIException):
@@ -23,6 +27,42 @@ class WorkspaceConflict(exceptions.APIException):
 
 class WorkspaceCreateView(APIView):
     """Create a workspace and its initial active Owner membership."""
+
+    def _resolve_active_coach_membership(self, user):
+        """Resolve this caller's active Owner or Coach membership without a slug."""
+        membership = (
+            Membership.objects.select_related("workspace")
+            .filter(
+                user=user,
+                status=Membership.Status.ACTIVE,
+                workspace__status=Workspace.Status.ACTIVE,
+                role__in=(Membership.Role.OWNER, Membership.Role.COACH),
+            )
+            .first()
+        )
+        if membership is None:
+            raise exceptions.NotFound()
+        return membership
+
+    def get(self, request):
+        """Return the active workspace available to the authenticated Coach."""
+        membership = self._resolve_active_coach_membership(request.user)
+        return Response(WorkspaceSerializer(membership.workspace).data)
+
+    def patch(self, request):
+        """Partially update settings for the caller's active owned workspace."""
+        membership = self._resolve_active_coach_membership(request.user)
+        if membership.role != Membership.Role.OWNER:
+            raise exceptions.PermissionDenied()
+
+        serializer = WorkspaceSettingsSerializer(
+            membership.workspace,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        workspace = serializer.save()
+        return Response(WorkspaceSerializer(workspace).data)
 
     def post(self, request):
         serializer = WorkspaceCreateSerializer(data=request.data)
