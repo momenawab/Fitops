@@ -1160,7 +1160,26 @@ DELETE /packages/{id}
 
 ---
 
-## Story 5.2 — Package State
+## Story 5.2 — Package State — ✅ COMPLETE (2026-08-21)
+
+**`POST /packages/{id}/activate` and `/deactivate` → 200** with the same ten-key package
+representation Story 5.1 returns. API §8 documents these as bare headings, so the contract was
+derived from the Story 5.1 pattern.
+
+**IDEMPOTENT — repeat calls return 200, never an error.** No document defines an error for
+activating an already-active package, so a 409/400 would invent a semantic.
+
+**Permission is `Coach/Owner`** — same Package block as Story 5.1, **deliberately unlike Stories
+4.2/4.3 which are OWNER-only**. `resolve_active_coach_membership` already permits both roles, so
+**no extra role guard is added**; adding one is a regression.
+
+**Workspace-scoped lookup** via `PackageDetailView._package` — a package in another Workspace is
+**invisible**: 404 byte-identical to a non-existent id, **never 403**.
+
+**Narrow save** — `save(update_fields=["is_active", "updated_at"])`, so a state change can never
+clobber `name`, `description`, `price`, `currency`, `duration_days` or `features`.
+`PATCH /packages/{id}` still accepts `is_active`. **No model change, no migration.**
+
 
 Implement:
 

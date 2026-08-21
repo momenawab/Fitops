@@ -29,9 +29,9 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | **Epic 05 — Packages** (Story 5.1 complete) |
-| **Current Story** | Story 5.1 — Package CRUD — **COMPLETE and merged** (2026-08-19) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ Epic 01 · Epic 02 (except DEFERRED 2.8) · ✅ **Epic 03 COMPLETE (5/5)**. ✅ Epic 04 COMPLETE (4/4). **Epic 05 in progress — Story 5.1 complete**; 5.2 NOT started |
+| **Current Epic** | **Epic 05 — Packages** (Stories 5.1–5.2 complete) |
+| **Current Story** | Story 5.2 — Package State — **COMPLETE and merged** (2026-08-21) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ Epic 01 · Epic 02 (except DEFERRED 2.8) · ✅ **Epic 03 COMPLETE (5/5)**. ✅ Epic 04 COMPLETE (4/4). **Epic 05 in progress — Stories 5.1 and 5.2 complete**; 5.3 NOT started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-17 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -587,7 +587,127 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 5.1 is complete and merged; Story 5.2 (Package State) has not started. Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+**No Story currently in progress.** Story 5.2 is complete and merged; Story 5.3 (Duplicate Package) has not started and is the final Epic 05 Story. Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+
+---
+
+## Completed — Story 5.2
+
+### Story 5.2 — Package State  (Epic 05 — Packages)
+
+**Status:** ✅ **COMPLETE** — **PR #21 merged as `22f74d823088d763358816cc5138b36c581be3f4`** on
+2026-08-21. Verified: `origin/main` and local `main` both equal that SHA, `git merge-base
+--is-ancestor` confirms containment, and the merged diff contained exactly the **three** intended
+files.
+
+**ACTIVATE / DEACTIVATE BEHAVIOUR:**
+
+| Route | Success |
+|---|---|
+| `POST /api/v1/packages/{id}/activate` | **200** — ten-key package, `is_active: true` |
+| `POST /api/v1/packages/{id}/deactivate` | **200** — ten-key package, `is_active: false` |
+
+API §8 documents these as **bare headings** — no request body, no response shape, no status code.
+The whole contract was **derived from the Story 5.1 pattern**, not invented: no request body, 200 on
+success, and the **same ten-key representation** `PackageSerializer` already returns
+(`id · name · description · price · currency · duration_days · features · is_active · created_at ·
+updated_at`). Only `POST` is accepted; other methods return **405**.
+
+**⛔ IDEMPOTENT SEMANTICS.** Activating an **already-active** package returns **200** with
+`is_active: true` and changes nothing; deactivating an **already-inactive** package returns **200**
+with `is_active: false`. **No document defines an error for this case**, so returning `CONFLICT` or
+`VALIDATION_ERROR` would have **invented a semantic**. Guarded by three tests; mutation M4 (replacing
+idempotency with a 400) is caught by all three.
+
+**⛔ AUTHORIZATION — `Coach/Owner`, NOT Owner-only.** Same Package API block as Story 5.1, so an
+ACTIVE **OWNER or COACH** is authorised on both endpoints. ⚠️ **Deliberately different from Stories
+4.2/4.3**, which are OWNER-only. Because `resolve_active_coach_membership` already permits both
+roles, **no extra role guard was added** — adding one would look cautious but is a **regression**
+that locks out legitimate coaches. Mutation M3 (wrongly adding an OWNER-only guard) is caught.
+
+**WORKSPACE-SCOPED LOOKUP.** Both endpoints reuse `PackageDetailView._package(membership,
+package_id)`, which goes through `TenantQuerySet.for_workspace(...)` before `get_object_or_404` —
+there is **no unscoped `Package.objects.get(...)`**. A package in another Workspace is
+**invisible**: **404 byte-identical to a random non-existent id**, and **never 403**, which would
+reveal the object exists (DB §26). Tests compare the two real responses to each other and confirm the
+foreign package's `is_active` is **unchanged** in the database.
+
+**NARROW `update_fields` BEHAVIOUR.** The state change saves with
+`save(update_fields=["is_active", "updated_at"])`, wrapped in an
+`if package.is_active != self.is_active` guard. A blanket `save()` on a stale instance is the
+realistic way this Story could silently clobber `name`, `description`, `price`, `currency`,
+`duration_days` or `features` — so a dedicated test captures all six before a
+deactivate→activate round-trip and re-asserts each from the database. Mutation M2 is caught by it.
+
+**`PATCH /packages/{id}` still accepts `is_active`** — these endpoints are an **additional** path,
+not a replacement, and `GET /packages?is_active=false` agrees with a package deactivated through the
+new endpoint. **No model change and no migration** — `makemigrations --check` exits 0.
+
+**⚠️ TEST AUTHORSHIP — MASTER-AUTHORED, NOT INDEPENDENTLY AUTHORED.**
+
+**AGY failed three times on this Story**: expired authentication, then a TLS handshake timeout on its
+eligibility check, then a generic agent execution error. Per the standing rule not to burn attempts
+on worker tooling failures, Master wrote `backend/tests/test_package_state_api.py` instead.
+
+**This is weaker than the usual independent authorship, and weaker than the Story 2.9 / 4.2
+fallbacks**, where Master wrote the tests **before** reading the implementation diff. Here Codex's
+diff had **already been reviewed**, so the tests cannot be claimed as blind. Master wrote strictly
+from the pre-existing contract file (which predates seeing the implementation), but that only
+mitigates — it does not restore independence.
+
+**Mutation testing is the compensating control**, because it is implementation-independent evidence:
+it proves the tests detect broken behaviour regardless of who wrote them. **Weigh the 24 tests
+accordingly**, and prefer restoring AGY for Story 5.3.
+
+**Master-run, real exit codes captured directly (never through a pipe):**
+
+| Check | Exit |
+|---|---|
+| `manage.py check` default / dev / prod | **0** / **0** / **0** |
+| repo-wide `makemigrations --check --dry-run` | **0** — no migration |
+| Focused Story 5.2 tests | **0** — 24 pass |
+| Story 5.1 regression | **0** — 51 pass |
+| Full suite | **0** — **571 tests** pass |
+| `./infrastructure/scripts/checks.sh` | **0** — all 7 gates PASS |
+| `cd frontend && npm run build` | **0** |
+| GitHub Actions CI | **success** — run `32506971981` |
+
+**CI evidence.** The run log reads `Merge 7941fa8076db… into c328ad05a975…` — the live PR head into
+the live base.
+
+**MUTATION RESULTS — five mutations, each verified to APPLY and to EXECUTE:**
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | Object lookup unscoped (**cross-tenant access**) | **4 failures** — isolation tests |
+| M2 | Blanket `save()` clobbering `name` | field-isolation test fails |
+| M3 | OWNER-only guard wrongly added | Coach-authorised test fails |
+| M4 | Idempotency replaced with a 400 | **3** idempotency tests fail |
+| M5 | `is_active` logic inverted | **6 failures** |
+
+⚠️ **M3 required correction to be valid.** As first written it referenced `Membership` and
+`exceptions`, which are **not imported** in `coaching/views.py`, so it would have raised `NameError`
+→ 500 and the tests would have "failed" for the **wrong reason**. The imports were added so the
+mutation exercised the real guard. **A mutation that fails for the wrong reason is not evidence.**
+
+⚠️ **RESTORE SOURCE CHANGED MID-STORY.** The scratchpad baseline copy was wiped by a session
+teardown partway through mutation testing. Master therefore **committed the implementation to the
+Story branch first**, making **git** the immutable baseline, and restored with
+`git checkout -- <file>` after every subsequent mutation, verifying with `git diff --quiet`.
+**Lesson: prefer git as the mutation baseline over a scratchpad copy — the scratchpad does not
+survive a session restart.**
+
+**Delegation.** Codex (implementation) succeeded and needed **no corrections** — it reused
+`resolve_active_coach_membership` and `PackageDetailView._package` (a genuine `@staticmethod`, so no
+repeat of the Story 4.3 cross-class binding trap), used the narrow `update_fields` save, the
+idempotency guard, and the `<uuid:package_id>` converter. AGY failed; see the disclosure above.
+GLM-5.3 correctly idle.
+
+**Housekeeping.** `AGENTS.md` removed (**9th occurrence**). A one-line corruption in the Blueprint
+(`b bbbcaaabacbaca?caaa`, stray keystrokes between Stories 5.2 and 5.3) was found in the working tree
+and reverted before branching, so it never entered the PR.
+
+**Next Story:** 5.3 — Duplicate Package (**final Epic 05 Story**).
 
 ---
 
@@ -3412,63 +3532,58 @@ machine are the user's running IDE, not delegation workers, and were correctly l
 | Field | Value |
 |---|---|
 | **Epic** | Epic 05 — Packages |
-| **Story ID** | **Story 5.2** |
-| **Story title** | Package State |
+| **Story ID** | **Story 5.3** |
+| **Story title** | Duplicate Package — **final Epic 05 Story** |
 
-**Do NOT start Story 5.2 automatically — user approval required. No implementation has begun.**
+**Do NOT start Story 5.3 automatically — user approval required. No implementation has begun.**
 
-**Blueprint §10 Story 5.2 + API §8:**
+**Blueprint §10 Story 5.3 + API §8:**
 
 ```
-POST /packages/{id}/activate
-POST /packages/{id}/deactivate
+POST /packages/{id}/duplicate
 ```
 
-API §8 documents these two headings with **no request body, no response shape and no status code**.
+API §8 documents this as a **bare heading** — no request body, response shape or status code, the
+same shape as Story 5.2.
 
-**Notes before starting Story 5.2 — carried from Story 5.1:**
+**Notes before starting Story 5.3 — carried from Story 5.2:**
 
-1. **`is_active` already exists on `Package` and defaults to `True`.** Story 5.2 owns toggling it.
-   **No model change and no migration should be needed** — `makemigrations --check` must exit 0.
-2. **Reuse Story 5.1's plumbing verbatim:** `resolve_active_coach_membership`,
-   `PackageDetailView._package`-style tenant-scoped lookup, and `PackageSerializer`. **Do not write
-   a second resolver, permission class, or lookup helper.**
-3. **Permission is `Coach/Owner`** — the same Package API block as 5.1. Do **not** add an OWNER-only
-   guard.
-4. **Object isolation applies identically:** a package in another Workspace must return **404**,
-   byte-identical to a non-existent id, **never 403**.
-5. **Response shape is undocumented.** Follow the Story 5.1 pattern: return the same ten-key package
-   representation, and disclose the choice. Decide deliberately whether activating an
-   already-active package is a 200 no-op or an error — **no document says**, so the non-inventing
-   choice is an **idempotent 200**; surface it if you disagree.
-6. **`is_active` must remain settable via `PATCH /packages/{id}`** (Story 5.1 already allows it).
-   These endpoints are an additional path, not a replacement — do not remove it from PATCH.
-7. **No rate limiting** — API §22 does not list package endpoints.
-8. ⚠️ **A 401 needs an `APIException` subclass, not `AuthenticationFailed`** — DRF coerces 401 → 403
-   under `SessionAuthentication`.
-9. **Keep the `staticmethod()` warning at the top of every AGY test brief** — six consecutive clean
-   Stories since it was added.
-10. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 5.2.
+1. **Duplicate semantics were pre-resolved in the Epic 05 preflight (2026-08-19):** an **exact copy**
+   except a new id and fresh timestamps. Copying the `name` verbatim is the **non-inventing** choice
+   — no unique constraint on `name` is documented — and forcing the copy inactive would be an
+   invention. Confirm against API §8 before implementing, and surface it if you disagree.
+2. **Response shape:** follow the Epic pattern — **201** with the same ten-key representation, since
+   it creates a resource. Disclose the choice; §8 documents no status code.
+3. **Permission is `Coach/Owner`** — same Package block. **Do not add an OWNER-only guard.**
+4. **Reuse, do not rebuild:** `resolve_active_coach_membership`, `PackageDetailView._package` and
+   `PackageSerializer`. The duplicate must be created **in the caller's own Workspace**, and a
+   cross-workspace source id must return **404**, never 403.
+5. **No model change and no migration** expected.
+6. ⚠️ **Restore AGY before dispatching if possible** — Story 5.2's tests were Master-authored because
+   AGY failed three times, which weakened verification independence. If AGY is available, use it.
+7. **Use git as the mutation baseline**, not a scratchpad copy — the scratchpad does not survive a
+   session restart (learned in Story 5.2).
+8. **Keep the `staticmethod()` warning at the top of any AGY test brief.**
+9. Nothing in `docs/MISSING_DECISIONS.md` (B24–B27, SMTP) blocks Story 5.3.
 
-**Epic 05:** 5.1 ✅ → **5.2 Package State** → 5.3 Duplicate Package.
-All three touch the same `coaching/{serializers,views,urls}.py`, so they must run **sequentially**;
-parallelism exists only within a Story (Codex ∥ AGY).
+**Epic 05:** 5.1 ✅ → 5.2 ✅ → **5.3 Duplicate Package (final)**. All three touch the same
+`coaching/{serializers,views,urls}.py`, so they run **sequentially**.
 
 **Still unblocked, each needing its OWN Story — do NOT fold into Epic 05:** Story 2.8 (Client OTP)
 and the `Role` field on `GET /auth/me`.
 
-**Standing verification rules (Stories 3.1–5.1):** baseline from a copy held **outside** the working
-tree (or `git checkout` for committed files); every mutation must be **schema- and check-consistent**
-so it fails for the intended reason; **a non-zero exit is not evidence of detection — confirm the
-mutation both APPLIES and EXECUTES, and that the intended test failed** (Story 5.1 needed three
-attempts: a stale test DB, then an impossible `uuid`→`bigint` cast, then a regenerated migration);
-**when a mutation survives, determine WHY before calling it redundant**; **a pipeline that produces
-an artifact proves nothing — test that the artifact is persisted**; an atomicity test that fails at
-the first step proves nothing; **when Master makes an undocumented design decision, Master must add
-the test that locks it in**; **when a fix does not work, verify the assumption rather than iterating
-on the symptom**; **always run the FULL suite before declaring a Story green**; isolate `MEDIA_ROOT`
-in any test that writes files; after a session restart, verify worker branches for actual commits;
-re-run the full suite after restoring and verify byte-identical restoration.
+**Standing verification rules (Stories 3.1–5.2):** baseline from **git** (preferred) or a copy held
+outside the working tree; every mutation must be **schema- and check-consistent** so it fails for the
+intended reason; **a non-zero exit is not evidence of detection — confirm the mutation both APPLIES
+and EXECUTES, and that the intended test failed**; **a mutation referencing un-imported names fails
+with NameError, not the intended behaviour — add the imports** (Story 5.2 M3); **when a mutation
+survives, determine WHY before calling it redundant**; **a pipeline that produces an artifact proves
+nothing — test that the artifact is persisted**; an atomicity test that fails at the first step
+proves nothing; **when Master makes an undocumented design decision, Master must add the test that
+locks it in**; **when a fix does not work, verify the assumption rather than iterating on the
+symptom**; **always run the FULL suite before declaring a Story green**; isolate `MEDIA_ROOT` in any
+test that writes files; after a session restart, verify worker branches for actual commits; re-run
+the full suite after restoring and verify byte-identical restoration.
 
 
 **Carry-ins still live:**
