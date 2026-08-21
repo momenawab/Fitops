@@ -68,3 +68,29 @@ class PackageDetailView(APIView):
         package = self._package(membership, package_id)
         package.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PackageStateView(APIView):
+    """Set a package's active state within the caller's active workspace."""
+
+    is_active = None
+
+    def post(self, request, package_id):
+        membership = resolve_active_coach_membership(request.user)
+        package = PackageDetailView._package(membership, package_id)
+        if package.is_active != self.is_active:
+            package.is_active = self.is_active
+            package.save(update_fields=["is_active", "updated_at"])
+        return Response(PackageSerializer(package).data)
+
+
+class PackageActivateView(PackageStateView):
+    """Activate a package."""
+
+    is_active = True
+
+
+class PackageDeactivateView(PackageStateView):
+    """Deactivate a package."""
+
+    is_active = False
