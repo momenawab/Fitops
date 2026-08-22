@@ -6,6 +6,7 @@ from .views import (
     PackageActivateView,
     PackageDeactivateView,
     PackageDetailView,
+    PackageDuplicateView,
     PackageView,
 )
 
@@ -21,5 +22,10 @@ urlpatterns = [
         "packages/<uuid:package_id>/deactivate",
         PackageDeactivateView.as_view(),
         name="package-deactivate",
+    ),
+    path(
+        "packages/<uuid:package_id>/duplicate",
+        PackageDuplicateView.as_view(),
+        name="package-duplicate",
     ),
 ]

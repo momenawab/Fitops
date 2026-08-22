@@ -1,5 +1,7 @@
 """Views for coaching package API endpoints."""
 
+from copy import deepcopy
+
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.generics import GenericAPIView
@@ -94,3 +96,22 @@ class PackageDeactivateView(PackageStateView):
     """Deactivate a package."""
 
     is_active = False
+
+
+class PackageDuplicateView(APIView):
+    """Duplicate a package within the caller's active workspace."""
+
+    def post(self, request, package_id):
+        membership = resolve_active_coach_membership(request.user)
+        package = PackageDetailView._package(membership, package_id)
+        duplicate = Package.objects.create(
+            workspace=membership.workspace,
+            name=package.name,
+            description=package.description,
+            price=package.price,
+            currency=package.currency,
+            duration_days=package.duration_days,
+            features=deepcopy(package.features),
+            is_active=package.is_active,
+        )
+        return Response(PackageSerializer(duplicate).data, status=status.HTTP_201_CREATED)
