@@ -1233,7 +1233,38 @@ POST /packages/{id}/duplicate
 
 # 11. EPIC 06 — Public Coach Portal
 
-## Story 6.1 — Public Coach Page
+## Story 6.1 — Public Coach Page — ✅ COMPLETE (2026-08-22)
+
+**`GET /public/coaches/{slug}` → 200** — the **first fully public, unauthenticated endpoint** in the
+codebase. API §7 names the content but gives no field list, so the shape was derived from the
+existing models. The body has exactly three keys: `workspace`, `coach`, `packages`.
+
+**Exactly these fields are exposed.** `workspace`: `name`, `slug`, `description`, `brand_color`,
+`logo`, `profile_image`, `whatsapp_number` — never `id`, `status`, `currency`, `timezone` or
+timestamps. `coach`: `bio`, `profile_image`, `website_url`, `instagram_url`, all from
+`CoachProfile`. **NO `User` field is ever exposed** — no email, id, names, phone or `platform_role`;
+`Workspace.name` is the public display name.
+
+**`AllowAny` with `authentication_classes = []`** (the project default is `IsAuthenticated`).
+**Anonymous and authenticated responses are byte-identical** — authentication here neither grants
+nor restricts anything.
+
+**Anti-enumeration:** a `SUSPENDED` workspace's slug returns a **404 byte-identical** to an unknown
+slug, **never 403**. `resolve_workspace_context` is deliberately not used — it requires an
+authenticated user and a Membership.
+
+**Coach resolution is ACTIVE `OWNER` only, and deterministic:** ordered by `created_at` so the
+earliest ACTIVE OWNER always wins. Nothing in the schema forbids two ACTIVE OWNERs — `Membership` is
+unique on `(user, workspace)`, not `(workspace, role)` — so an unordered `.first()` made the public
+page non-deterministic. `coach` is **`null` with 200** when there is no ACTIVE OWNER membership or
+that owner has no `CoachProfile`.
+
+**Packages:** only `is_active=True` packages of this workspace, ordered `-created_at`, reusing the
+Epic 05 `for_workspace` scoping and `PackageSerializer` — **no duplication**. **Not paginated**: a
+composed public page, so a plain JSON list with no `count`/`next`/`previous`/`results`. An empty
+list is valid. No throttle — API §22 covers the Story 6.3 POST, not public reads.
+
+**No model change, no migration.**
 
 Implement:
 

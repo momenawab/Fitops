@@ -29,9 +29,9 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | **Epic 05 — Packages — ✅ COMPLETE (3/3)** |
-| **Current Story** | Story 5.3 — Duplicate Package — **COMPLETE and merged** (2026-08-22) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. ✅ **Epic 05 COMPLETE (3/3)** — Stories 5.1, 5.2 and 5.3 all merged. **Epic 06 — Public Coach Portal NOT started** |
+| **Current Epic** | **Epic 06 — Public Coach Portal** (Story 6.1 complete) |
+| **Current Story** | Story 6.1 — Public Coach Page — **COMPLETE and merged** (2026-08-22) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. ✅ **Epic 05 COMPLETE (3/3)**. **Epic 06 in progress — Story 6.1 complete**; 6.2 NOT started; **6.3 is owned by Epics 07/08 and is deliberately out of Epic 06** |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-22 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -587,11 +587,224 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** **Epic 05 — Packages is COMPLETE (3/3)**: Stories 5.1, 5.2 and
-5.3 are all merged. The next Epic in the Blueprint §29 order is **Epic 06 — Public Coach Portal**
-(Stories 6.1 Public Coach Page, 6.2 Public Packages, 6.3 Public Application) — **not started, and not
-to be started without explicit approval**. Story 2.8 (Client OTP) and the `/auth/me` Role field
-remain unblocked but each needs its own Story.
+**No Story currently in progress.** **Epic 06 — Public Coach Portal is in progress**: Story 6.1
+(Public Coach Page) is complete and merged. **Story 6.2 — Public Packages** is next and has not
+started.
+
+**Story 6.3 (Public Application) is NOT part of Epic 06.** It requires the `Application` model
+(Story 7.1), the client-onboarding transaction (Story 7.3 — which specifies the same endpoint), and
+the `Order` model (Story 8.1). It lands with Epic 07. **Do not build Application or Order models
+ahead of their Epics.** Epic 06 is therefore Stories 6.1 and 6.2 only.
+
+Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+
+---
+
+## Completed — Story 6.1
+
+### Story 6.1 — Public Coach Page  (Epic 06 — Public Coach Portal)
+
+**Status:** ✅ **COMPLETE** — **PR #23 merged as `2fc9553550fe49fec9975dd4993696523d3e4aec`** on
+2026-08-22. Verified: `origin/main` and local `main` both equal that SHA, `git merge-base
+--is-ancestor` confirms both the merge commit and the PR head `1f9d307e…` are contained in
+`origin/main`, and the merged diff contained exactly the **four** intended files (+1115 lines).
+
+**This is the FIRST fully public, unauthenticated endpoint in the codebase.** Every earlier endpoint
+required a session and a Membership; this one inverts that, so the security posture is different in
+kind and not merely in degree.
+
+#### The contract
+
+**`GET /api/v1/public/coaches/{slug}` → 200 OK.** API Specification §7 names the returned content —
+"Coach public profile, Workspace branding, Public information, Active packages" — but gives **no
+field list, no response body and no status code**. The exact shape below was derived from the
+existing models. **No model, field, endpoint or behaviour was invented to fill the gap.**
+
+The body has **exactly three top-level keys**: `workspace`, `coach`, `packages`.
+
+```json
+{
+  "workspace": {"name","slug","description","brand_color","logo","profile_image","whatsapp_number"},
+  "coach":     {"bio","profile_image","website_url","instagram_url"},
+  "packages":  [ ten-key package objects ]
+}
+```
+
+#### Exact exposed fields — and what is deliberately withheld
+
+| Block | Exposed | Deliberately NOT exposed |
+|---|---|---|
+| `workspace` | **exactly seven**: `name`, `slug`, `description`, `brand_color`, `logo`, `profile_image`, `whatsapp_number` | `id`, `status`, `currency`, `timezone`, `created_at`, `updated_at` |
+| `coach` | **exactly four**, all from `CoachProfile`: `bio`, `profile_image`, `website_url`, `instagram_url` | **every `User` field** — `id`, `email`, `first_name`, `last_name`, `phone`, `platform_role` |
+| `packages` | the ten-key `PackageSerializer` shape | `workspace` / `workspace_id` |
+
+**No `User` field is ever exposed — this is a hard security boundary.** `CoachProfile` has no name
+field, and reaching into the global `User` to invent one would exceed the documented models.
+**`Workspace.name` is the public display name**, which is precisely why branding lives on `Workspace`
+rather than on `CoachProfile` (a Coach may operate more than one Workspace). A test asserts the
+owner's email, names, phone and UUID appear nowhere in the raw response body, so re-adding a coach
+name later fails loudly rather than shipping silently.
+
+The workspace UUID is asserted absent from the raw body as well — a public visitor receives no
+internal identifier. Package `id` and `currency` are still present and correct; those are the
+public product identifiers a visitor needs.
+
+#### Access control
+
+**`permission_classes = [AllowAny]` and `authentication_classes = []`.** The project default is
+`IsAuthenticated` (`config/settings/base.py`), so both are set explicitly. Clearing
+`authentication_classes` also keeps session/CSRF machinery off an anonymous GET.
+
+**Anonymous and authenticated responses are byte-identical.** An authenticated caller with **no
+membership** in the workspace — and the workspace's own owner — receive exactly the same 200 body as
+an anonymous visitor, asserted by comparing `response.content` directly. Authentication on this
+route neither grants nor restricts anything.
+
+#### Anti-enumeration
+
+**A `SUSPENDED` workspace is invisible.** Its slug returns a **404 byte-identical** to the 404 for a
+slug that does not exist at all — asserted with `response.content` equality, **never 403**. A visitor
+cannot distinguish an existing-but-suspended workspace from a non-existent one. Resolution is a
+single query filtering on both `slug` and `status=ACTIVE`, then a bare `NotFound()` — the same
+technique `common/middleware/workspace.py` uses for authenticated routes. The 404 follows the API §2
+envelope: top-level key set exactly `{"error"}`, `code == "NOT_FOUND"`, no `fields` key.
+
+`resolve_workspace_context` is deliberately **not** called: it requires an authenticated user and a
+Membership, neither of which exists here.
+
+#### Coach resolution — ACTIVE OWNER only, deterministically
+
+The coach shown is the workspace's **`Membership` with `role=OWNER` and `status=ACTIVE`**, then that
+user's `CoachProfile`. A `COACH` or `CLIENT` member with a `CoachProfile` is never shown, and an
+**INACTIVE** OWNER membership is treated as absent.
+
+**`coach` is `null` with a 200** — never a 404, never a 500 — in both cases: the workspace has no
+ACTIVE OWNER membership, or that owner has no `CoachProfile` row. A missing profile is not an error,
+and no profile is created.
+
+**The lookup orders by `created_at` before `.first()`, so the earliest ACTIVE OWNER always wins.**
+This was a **real defect found by mutation testing**, not a stylistic preference — see below.
+
+#### Package listing
+
+Only **`is_active=True`** packages belonging to **this workspace**, ordered **`-created_at`** to
+match the Story 5.1 list endpoint. Inactive packages and other workspaces' packages are both
+excluded, asserted by strict id-set equality.
+
+**Reuse, not rebuild:** the Epic 05 `Package.objects.for_workspace(...)` `TenantQuerySet` scoping and
+the existing `PackageSerializer` are used directly. **No package querying or scoping logic is
+duplicated**, and no second package serializer exists.
+
+#### No pagination — composed-page semantics
+
+`packages` is a **plain JSON list**, not a paginated envelope. The response is a single composed
+public page, not a list endpoint, so it carries no `count` / `next` / `previous` / `results` keys.
+An **empty** `packages` list is valid and returns 200. The separate paginated
+`GET /public/coaches/{slug}/packages` is **Story 6.2** and was deliberately not built here.
+
+**No rate limiting on this endpoint.** API §22 mandates throttles for "public application endpoints"
+— that is the Story 6.3 **POST** — not public reads. No throttle class was added.
+
+**No model change and no migration.** The public surface lives in its own
+`apps/workspaces/public_views.py` and `public_serializers.py` so the `AllowAny` boundary is
+auditable in one place rather than mixed into the authenticated views.
+
+#### A real defect that mutation testing found
+
+The owner lookup originally used an **unordered `.first()`**. Nothing in the schema forbids a
+workspace having **two ACTIVE OWNER memberships** — `Membership` is unique on `(user, workspace)`,
+**not** on `(workspace, role)`. Postgres therefore returned an arbitrary row, so **the public page
+could show a different coach from one request to the next**.
+
+It surfaced in an unusual way: the `role=OWNER` mutation was **caught when its test class ran alone
+but survived in the full-file run**, because the row returned depended on what else was in the
+table. The first hypothesis (insertion order) was **wrong**; rather than iterate on the symptom, a
+probe was written to observe which membership the view actually selected. The fix is
+`order_by("created_at")`, and a test pins the earliest owner across repeated requests.
+
+**Lesson recorded:** a mutation whose detection depends on test-execution order is evidence of
+non-determinism in the implementation, not merely a weak test.
+
+#### Mutation testing — 9 of 9 caught
+
+Every mutation was verified to **apply, parse and execute** (`manage.py check` clean) before being
+counted, and every mutated file was restored **from git** and verified byte-identical.
+
+| # | Mutation | Failures |
+|---|---|---|
+| M1 | `status=ACTIVE` dropped from workspace resolution — SUSPENDED workspaces become visible | 2 |
+| M2 | `is_active=True` dropped — inactive packages leak onto the public page | 3 |
+| M3 | `for_workspace` → `unscoped()` — cross-tenant package leak | 2 |
+| M4 | `email` added to the coach serializer — User identity leak | 3 |
+| M5 | `id` + `status` added to the workspace serializer — internal fields leak | 6 |
+| M6 | `role=OWNER` dropped — a COACH or CLIENT profile shown publicly | 1 |
+| M7 | `AllowAny` removed — the endpoint stops being public | 35 |
+| M8 | deterministic `order_by("created_at")` removed | 1 |
+| M9 | `status=ACTIVE` dropped from the owner lookup — an INACTIVE owner is shown | 1 |
+
+#### Verification — Master-run, real exit codes captured directly (never through a pipe)
+
+| Check | Exit |
+|---|---|
+| `manage.py check` | **0** |
+| `makemigrations --check --dry-run` | **0** — no changes detected |
+| Focused tests (`tests.test_public_coach_api`) | **36/36** |
+| Full Django suite on real PostgreSQL | **632/632** |
+| `checks.sh` | **0** — all 7 gates PASS |
+| `npm run build` | **0** |
+
+**CI evidence.** The run log reads `Merge 1f9d307e4bdf… into 07110c218822…` — the live PR head into
+the then-current `main`, confirmed equal to live `origin/main` at review time.
+
+#### Delegation
+
+Codex (implementation: `public_views.py`, `public_serializers.py`, `urls.py`) ∥ AGY (35 tests,
+`test_public_coach_api.py`) on disjoint files; GLM-5.3 correctly idle.
+
+**AGY was genuinely blind** — a separate worktree at `main` where the endpoint does not exist, with
+the brief stating its tests were expected to fail there. The no-shell constraint learned in Story 5.3
+was included from the start and AGY succeeded on the **first** dispatch. **The staticmethod /
+class-attribute binding trap warning worked again**: the delivered tests import nothing from
+`public_views`, `public_serializers` or `common.middleware`, call no view helper, reference no view
+class, and mock nothing.
+
+**One AGY test was wrong and was corrected by Master:** it expected only the two packages it created
+while the shared `_setup_public_workspace` helper had already created two more, so it asserted a
+short set. **The implementation was correct** — it returned all four active packages and properly
+excluded the inactive and cross-tenant ones. Fixed by passing `package_count=0`, which preserves the
+test's strict set equality.
+
+Master also strengthened the role-selection test (creating the COACH and CLIENT **before** the
+OWNER) and added the earliest-owner determinism test.
+
+#### Housekeeping
+
+`AGENTS.md` removed (**11th occurrence**). **The scratchpad was wiped mid-Story again** — the
+worktree directory vanished between turns. Nothing was lost, because the implementation had already
+been committed to the branch: the worktree was recreated from `story/6.1-public-coach-page` with
+`git worktree add --force`, and **nothing was pruned**. This re-confirms the standing rule: commit
+before mutation testing and treat **git**, never the scratchpad, as the immutable baseline.
+
+#### Scope — Story 6.3 remains owned by later Epics
+
+**Story 6.3 (Public Application) is NOT part of Epic 06 as implemented, and was deliberately not
+built.** `POST /public/coaches/{slug}/applications` depends on:
+
+- the **`Application` model** — created in **Story 7.1** (Epic 07)
+- the **client-onboarding transaction** — specified in **Story 7.3** (Epic 07), which describes the
+  **same endpoint**; the Blueprint documents it in both 6.3 and 7.3
+- the **`Order` model** — created in **Story 8.1** (Epic 08)
+
+Building it inside Epic 06 would mean creating Application and Order models ahead of their owning
+Epics. **Epic 06 is therefore Stories 6.1 and 6.2**, and Story 6.3 lands with Epic 07. Do not build
+Application or Order models before their Epics.
+
+**Next:** **Story 6.2 — Public Packages** (`GET /public/coaches/{slug}/packages`) — not started.
+Carry-ins: it is the **paginated** sibling of the embedded list in 6.1, so expect
+`?page=&page_size=` with the `{count, next, previous, results}` envelope (API §2), the same
+ACTIVE-workspace-only resolution and byte-identical 404, the same active-package-only filter and
+`-created_at` order, and the same `AllowAny` + `authentication_classes = []` posture. Reuse
+`PackageSerializer` and `for_workspace` again; add no new model and no migration.
 
 ---
 
