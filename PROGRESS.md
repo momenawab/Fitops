@@ -29,11 +29,11 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | **Epic 05 — Packages** (Stories 5.1–5.2 complete) |
-| **Current Story** | Story 5.2 — Package State — **COMPLETE and merged** (2026-08-21) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ Epic 01 · Epic 02 (except DEFERRED 2.8) · ✅ **Epic 03 COMPLETE (5/5)**. ✅ Epic 04 COMPLETE (4/4). **Epic 05 in progress — Stories 5.1 and 5.2 complete**; 5.3 NOT started |
+| **Current Epic** | **Epic 05 — Packages — ✅ COMPLETE (3/3)** |
+| **Current Story** | Story 5.3 — Duplicate Package — **COMPLETE and merged** (2026-08-22) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. ✅ **Epic 05 COMPLETE (3/3)** — Stories 5.1, 5.2 and 5.3 all merged. **Epic 06 — Public Coach Portal NOT started** |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
-| **Last updated** | 2026-08-17 |
+| **Last updated** | 2026-08-22 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
 
 **Repository state:** git repository initialized on branch `main`, working tree clean. Story 1.1
@@ -587,7 +587,161 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** Story 5.2 is complete and merged; Story 5.3 (Duplicate Package) has not started and is the final Epic 05 Story. Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+**No Story currently in progress.** **Epic 05 — Packages is COMPLETE (3/3)**: Stories 5.1, 5.2 and
+5.3 are all merged. The next Epic in the Blueprint §29 order is **Epic 06 — Public Coach Portal**
+(Stories 6.1 Public Coach Page, 6.2 Public Packages, 6.3 Public Application) — **not started, and not
+to be started without explicit approval**. Story 2.8 (Client OTP) and the `/auth/me` Role field
+remain unblocked but each needs its own Story.
+
+---
+
+## Completed — Story 5.3
+
+### Story 5.3 — Duplicate Package  (Epic 05 — Packages)
+
+**Status:** ✅ **COMPLETE** — **PR #22 merged as `79de6485596331dd3dcf23f0eb1954f65b678bf2`** on
+2026-08-22. Verified: `origin/main` and local `main` both equal that SHA, `git merge-base
+--is-ancestor` confirms both the merge commit and the PR head `737ffcc2…` are contained in
+`origin/main`, and the merged diff contained exactly the **three** intended files (+680 lines).
+
+**This Story completes Epic 05 — Packages (3/3).**
+
+#### What was implemented
+
+**`POST /api/v1/packages/{id}/duplicate` → 201 Created**, returning the same ten-key package
+representation Story 5.1 returns (`id, name, description, price, currency, duration_days, features,
+is_active, created_at, updated_at`). API Specification §8 documents this endpoint as a **bare
+heading** — no request body, no response body, no status code — so the contract was derived from the
+Story 5.1 / 5.2 patterns exactly as Story 5.2's was.
+
+#### Duplicate semantics (the binding decisions)
+
+| Aspect | Decision |
+|---|---|
+| Success status | **201 Created** — it creates a resource, matching `POST /packages` from Story 5.1 |
+| Copy scope | **Exact copy of all seven business fields**: `name`, `description`, `price`, `currency`, `duration_days`, `features`, `is_active` |
+| `id` | **New UUID** on the copy, never equal to the source's |
+| Timestamps | **Fresh `created_at` and `updated_at`**, set by `auto_now_add` / `auto_now`; the source's timestamps are never carried across |
+| `name` | **Copied verbatim — the SAME name.** No `" (Copy)"`, `" copy"` or `" 2"` suffix. Inventing a suffix would invent a semantic no approved document defines |
+| `is_active` | **Copied verbatim — the SAME state.** Duplicating an inactive package yields an **inactive** copy. Not forced `True`, not forced `False` |
+| Source package | **Never modified.** Every source field, including `updated_at`, is untouched — the source row is never written at all |
+| Idempotency | **Deliberately NON-idempotent.** Each call creates a distinct package; duplicating twice yields two distinct copies. No idempotency guard was added, because a duplicate is a new sellable product, not a retryable state transition |
+| Request body | **Ignored entirely.** The endpoint takes no input — no `name` override, no suffix parameter. A body sent is simply not read |
+| `features` | Deep-copied at creation so the two rows never share one mutable list (see the M6 note below — this is defensive depth, not load-bearing) |
+
+**No model change and no migration** — `makemigrations --check --dry-run` reports no changes.
+
+#### Authorization and tenancy
+
+**Permission is `Coach/Owner`** — the same Package block as Stories 5.1 and 5.2, **deliberately
+unlike Stories 4.2/4.3 which are OWNER-only**. `resolve_active_coach_membership` already permits
+both OWNER and COACH, so **no extra role guard was added**; adding one is a regression, and mutation
+M4 exists specifically to make that regression fail loudly.
+
+**Workspace-scoped lookup** via `PackageDetailView._package` (a genuine `@staticmethod`, so no
+repeat of the Story 4.3 cross-class binding trap). A package in another Workspace is **invisible**:
+its id returns a **404 byte-identical to a non-existent id**, **never 403**. The copy is always
+created in the caller's resolved workspace — no workspace id is ever read from the request.
+
+#### Mutation testing — 5 of 6 caught, 1 genuinely equivalent
+
+Every mutation was verified to **apply, parse and execute** before being counted, and every mutated
+file was restored **from git** (the immutable baseline, per the Story 5.2 lesson) and verified
+byte-identical with `git diff --quiet`.
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | `name` gets a `" (Copy)"` suffix | **caught** — 3 failures |
+| M2 | `is_active` forced `True` on the copy | **caught** — 1 failure |
+| M3 | workspace scoping dropped from the source lookup (`objects.unscoped()`) | **caught** — 2 failures |
+| M4 | OWNER-only guard added (the Story 5.2 regression) | **caught** — 1 failure |
+| M5 | idempotency guard added, returning an existing copy | **caught** — 2 failures |
+| M6 | `deepcopy(package.features)` → `package.features` | **survived — EQUIVALENT MUTANT, not counted as caught** |
+
+**M6 is a genuinely equivalent mutant and is deliberately NOT counted as a caught mutation.** Per the
+standing rule, the survival was investigated rather than dismissed as redundant. The source package
+is loaded by a fresh query, so its `features` list belongs to that instance alone, and nothing
+mutates it after `create()`. Each row serializes its own JSON on INSERT, so **the two rows are
+independent in the database with or without `deepcopy`** — demonstrated directly by the independence
+test still passing *under* the mutation. Catching M6 would require asserting Python object identity
+inside the view, which is not a behavioural invariant and is exactly the implementation-internals
+coupling the test brief forbids. `deepcopy` is retained as defensive depth.
+
+#### Pre-existing 404 message split — recorded, NOT changed
+
+The blind tests surfaced that the two 404 stages return different `message` values:
+
+- `resolve_active_coach_membership` raises a bare DRF `NotFound()` → `"Not found."`
+- `get_object_or_404` produces → `"No Package matches the given query."`
+
+Both map to code `NOT_FOUND` and status 404 through `common/exceptions`.
+
+**This is PRE-EXISTING behaviour, not a Story 5.3 regression.** It was probed empirically and found
+**identical on the Story 5.1 detail endpoint and the Story 5.2 activate/deactivate endpoints**, which
+reuse the same two helpers. Story 5.3 introduced nothing here.
+
+**It does NOT violate DB §26.** Object existence is never revealed: a cross-tenant id and a random
+UUID are **byte-identical** (asserted directly, and passing). The split discloses only which stage
+rejected the caller — a fact the caller already knows about their own account.
+
+**It was deliberately NOT changed in this Story.** Changing it would silently alter Stories 5.1 and
+5.2 behaviour, which is outside Story 5.3's scope. The Story 5.3 test was narrowed to the invariant
+the architecture actually requires — the four authorization-stage failures byte-identical to each
+other, the two object-stage failures byte-identical to each other, and cross-tenant indistinguishable
+from non-existent — with the full reasoning recorded in the test file itself. **Flagged for a
+separate decision; do not treat it as resolved.**
+
+#### Verification — Master-run, real exit codes captured directly (never through a pipe)
+
+| Check | Exit |
+|---|---|
+| `manage.py check` | **0** |
+| `makemigrations --check --dry-run` | **0** — no changes detected |
+| Focused tests (`tests.test_package_duplicate_api`) | **25/25** |
+| Full Django suite on real PostgreSQL | **596/596** |
+| `checks.sh` | **0** — all 7 gates PASS |
+| `npm run build` | **0** |
+
+**CI evidence.** The run log reads `Merge 737ffcc242c7… into bce1aaa97a95…` — the live PR head into
+the then-current `main`, confirmed equal to live `origin/main` at review time. Run
+[32570057509](https://github.com/momenawab/Fitops/actions/runs/32570057509) **success**.
+
+#### Delegation
+
+Codex (implementation: `views.py` + `urls.py`) ∥ AGY (25 tests, `test_package_duplicate_api.py`) on
+disjoint files; GLM-5.3 correctly idle.
+
+**AGY independence was genuinely restored after the Story 5.2 fallback.** AGY authored the tests
+**blind** — it worked in a separate worktree containing only `main`, never saw Codex's diff, and the
+brief explicitly told it the endpoint would not exist and its tests were expected to fail there.
+**The blind authorship paid off immediately: AGY found the 404 message split**, which Master's own
+Story 5.2 tests had missed because they only compared the four authorization-stage scenarios.
+
+**AGY tooling note.** The first dispatch died on a shell-permission denial (`agy` cannot prompt for
+command approval in `--print` mode and auto-denied `ruff`/`black`), touching 0 files. **One** retry
+succeeded after the brief was amended to forbid all shell execution and let Master run the linters —
+consistent with the standing rule not to waste multiple attempts on worker tooling failures.
+
+**The recurring staticmethod / class-attribute trap was included in AGY's brief and worked**: the
+delivered tests import nothing from `apps.coaching.views` or `apps.workspaces.views`, call no view
+helper directly, assert on no view class attribute, and mock nothing — they go through the HTTP API
+plus direct ORM reads only.
+
+**Master edits to AGY's file were two:** the 404 grouping described above, and `ruff format` (the
+project's formatter gate is `ruff format --check`, not black — the brief named black in error, which
+was harmless because AGY ran nothing).
+
+#### Housekeeping
+
+`AGENTS.md` removed (**10th occurrence**). Blueprint verified corruption-free before branching.
+
+**Next:** **Epic 06 — Public Coach Portal** (Stories 6.1 Public Coach Page, 6.2 Public Packages,
+6.3 Public Application) — **not started**. Carry-ins: Epic 06 is the first **public, unauthenticated**
+surface, so the tenant rules invert from "resolve membership" to "resolve workspace by slug with no
+caller identity" — expect a focused preflight on which fields are safe to expose publicly, and note
+that Story 6.3 creates Application + User + ClientProfile + Membership + initial Order in **one
+all-or-nothing transaction** (API §13). Restore AGY the same way (no shell in its brief), and keep
+using **git** as the mutation baseline.
 
 ---
 

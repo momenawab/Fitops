@@ -1121,7 +1121,7 @@ No automated payment gateway integration in Phase 1.
 
 ---
 
-# 10. EPIC 05 — Packages
+# 10. EPIC 05 — Packages — ✅ COMPLETE (3/3)
 
 ## Story 5.1 — Package CRUD — ✅ COMPLETE (2026-08-19)
 
@@ -1190,7 +1190,38 @@ POST /packages/{id}/deactivate
 
 ---
 
-## Story 5.3 — Duplicate Package
+## Story 5.3 — Duplicate Package — ✅ COMPLETE (2026-08-22)
+
+**`POST /packages/{id}/duplicate` → 201 Created** with the same ten-key package representation
+Story 5.1 returns. API §8 documents this as a bare heading, so the contract was derived from the
+Story 5.1 / 5.2 patterns.
+
+**Exact copy of all seven business fields** — `name`, `description`, `price`, `currency`,
+`duration_days`, `features`, `is_active`. **`name` is copied verbatim** (no `" (Copy)"` suffix) and
+**`is_active` is copied verbatim** (duplicating an inactive package yields an inactive copy); either
+suffix or forced state would invent a semantic no document defines.
+
+**The copy is a new row** — new UUID `id` and fresh `created_at` / `updated_at`, in the same
+Workspace as the source. **The source package is never modified**, including its `updated_at`.
+
+**DELIBERATELY NON-IDEMPOTENT** — each call creates a distinct package; duplicating twice yields two
+distinct copies. A duplicate is a new sellable product, not a retryable state transition, so no
+idempotency guard is added. The request body is **ignored entirely**.
+
+**Permission is `Coach/Owner`** — same Package block as Stories 5.1/5.2, deliberately unlike Stories
+4.2/4.3 which are OWNER-only. `resolve_active_coach_membership` already permits both roles, so **no
+extra role guard is added**; adding one is a regression.
+
+**Workspace-scoped lookup** via `PackageDetailView._package` — a package in another Workspace is
+**invisible**: 404 byte-identical to a non-existent id, **never 403**. **No model change, no
+migration.**
+
+**Known pre-existing behaviour (NOT a Story 5.3 regression, NOT changed here):** the two 404 stages
+return different `message` values — `"Not found."` from `resolve_active_coach_membership` versus
+`"No Package matches the given query."` from `get_object_or_404`. Identical on the Story 5.1 detail
+and Story 5.2 activate/deactivate endpoints. It does not violate DB §26, because a cross-tenant id
+and a random UUID remain byte-identical, so object existence is never revealed. **Open for a
+separate decision.**
 
 Implement:
 
