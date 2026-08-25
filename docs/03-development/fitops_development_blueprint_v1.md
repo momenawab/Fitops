@@ -142,6 +142,7 @@ approved by the user on 2026-08-25 — it is **not** a pre-existing requirement.
 | # | Decision | Gap it fills |
 |---|---|---|
 | 52 | **`Order.order_number` — per-workspace sequential, zero-padded** (e.g. `000001`), with a **`UNIQUE(workspace_id, order_number)`** constraint. Allocated **inside the creating transaction**, concurrency-safe, **retrying on unique conflict**. **No global/platform-wide sequence.** The UUID `id` remains the external primary identifier; `order_number` is the **human-facing** identifier. | DB §12 and ERD both list `order_number` as a field distinct from `id`, but no document defines its format, its uniqueness scope, or how it is generated. A separate `order_number` alongside a UUID pk only earns its place if it is human-meaningful, since coaches and clients quote order numbers. Per-workspace scoping follows the same tenant-isolation logic as the rest of the codebase and avoids revealing platform-wide order volume across tenants. |
+| 53 | **`public_application` throttle — `10/hour`**, applied to `POST /public/coaches/{slug}/applications` with DRF's `ScopedRateThrottle`. No global throttling; no existing scope changed. | API §22 makes rate limiting **mandatory** for "Public application endpoints" but specifies **NO numeric value**, and no other approved document defines one. **API §22 did not originally specify `10/hour`** — this number is a project decision, not a pre-existing requirement. This is the project's first public unauthenticated *write* endpoint, which creates `User`, `Membership` and `Order` rows, so the limit bounds row-creation abuse rather than email cost. **Not** derived from the OTP, login or upload scopes. |
 
 ---
 
@@ -1246,7 +1247,7 @@ POST /packages/{id}/duplicate
 
 ---
 
-# 11. EPIC 06 — Public Coach Portal
+# 11. EPIC 06 — Public Coach Portal — ✅ COMPLETE (3/3)
 
 ## Story 6.1 — Public Coach Page — ✅ COMPLETE (2026-08-22)
 
@@ -1341,13 +1342,16 @@ GET /public/coaches/{slug}/packages
 
 ---
 
-## Story 6.3 — Public Application — ⛔ BLOCKED (owned by Epics 07/08)
+## Story 6.3 — Public Application — ✅ COMPLETE (2026-08-25, via Story 7.3)
 
-**Not delivered in Epic 06, and deliberately not re-scoped out of it.** This Story requires the
-`Application` model (Story **7.1**), the client-onboarding transaction (Story **7.3**, which
-specifies the *same* endpoint), and the `Order` model (Story **8.1**). It therefore **lands with
-Epic 07**, and **Epic 06 closes at that point** — Epic 06 is not marked COMPLETE while this Story
-remains listed under it and undelivered.
+**Satisfied by the Story 7.3 endpoint. There is NO separate implementation, and there must never be
+one.** `POST /public/coaches/{slug}/applications` is the *same* public application surface the
+Blueprint lists under both 6.3 and 7.3; a second endpoint would duplicate the atomic transaction and
+split the contract.
+
+It was blocked until its dependencies existed — the `Application` model (Story 7.1), the
+client-onboarding transaction (Story 7.3) and the `Order` model (Story 8.1) — all of which are now
+complete. **Epic 06 closes here.**
 
 
 Implement:
@@ -1446,7 +1450,53 @@ Capture:
 
 ---
 
-## Story 7.3 — Client Onboarding
+## Story 7.3 — Client Onboarding — ✅ COMPLETE (2026-08-25)
+
+**`POST /public/coaches/{slug}/applications`** — the complete atomic submission transaction, in one
+`transaction.atomic()` in `apps/applications/services.py`, following API §7's step order. **This
+endpoint also satisfies Story 6.3 and closes Epic 06 — 6.3 must never be implemented separately.**
+
+**Atomicity:** a failure at the final Order step rolls back the `Application`, the `Membership` and
+any `User`/`ClientProfile` created by that request. API §7: "a failure at any step must not leave an
+Application without its Order or an Order without its Application."
+
+**Reuse:** `resolve_public_workspace` (6.1/6.2) gives the identical 404 for unknown and SUSPENDED
+slugs; the Story 7.2 serializer validates the package, so a cross-workspace package stays
+indistinguishable from a non-existent one — **no second check was added** that could reintroduce
+enumeration; the Story 8.1 `Order` is used as-is. **No schema change, no migration.**
+
+**Security:** workspace only from the slug, never request data · `Order.client` is the **Membership**
+· `amount`/`currency` from the **Package**, never the request · an existing global `User` is reused
+untouched · an existing `Membership` is reused **without changing role or status**, so an applicant
+who is already a COACH or OWNER is never silently demoted.
+
+**`order_number` allocation (decision 52) lands here** — Story 8.1 shipped only the field and the
+`UNIQUE(workspace, order_number)` constraint. Per-workspace sequential, zero-padded to six digits,
+never a global counter, allocated inside the transaction with bounded retry on unique conflict.
+**Each attempt runs in its own savepoint**, because an `IntegrityError` inside the outer atomic block
+without a savepoint marks the transaction broken and raises `TransactionManagementError` on the next
+statement.
+
+**Decision — the 201 response** (undocumented): exactly `application_id`, `order_id`, `order_number`
+and `status`. No applicant personal data, workspace id, package id or amount is echoed back on an
+unauthenticated endpoint.
+
+**Decision 53 — `public_application` throttle `10/hour`.** See §2D: API §22 requires a throttle here
+but names **no** number; `10/hour` is a **project decision filling a documentation gap**, not a
+pre-existing API §22 requirement.
+
+**Testing note — a real defect found and fixed.** The delivered atomicity test patched
+`type(order.objects).create`. `Order` and `Application` **share one manager class**
+(`WorkspaceScopedModel` calls `TenantQuerySet.as_manager()` once in the abstract base), so that patch
+also stubbed `Application.objects.create` — the Application was never created and the rollback
+assertion was **vacuous**. Fixed by patching the manager **instance**. **STANDING RULE: patch the
+manager instance, never `type(model.objects)`.**
+
+**Mutation evidence: 12 of 13 caught.** **M8 (per-attempt savepoint removed) SURVIVED and is NOT
+counted as caught** — the injected conflict raises `IntegrityError` from a mock, so the transaction
+is never genuinely marked broken; a real violation needs true concurrency a single-connection
+`TestCase` cannot stage. **M8 is untestable here, NOT equivalent** — removing the savepoint would
+break production.
 
 Application flow, in a single transaction:
 
