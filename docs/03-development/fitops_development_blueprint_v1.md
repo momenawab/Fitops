@@ -130,6 +130,21 @@ Rate limits 44 and 45 were chosen for this flow specifically. They are **not** d
 
 ---
 
+## 2D — Implementation Decisions (Story 8.1 preflight, 2026-08-25)
+
+**This was NOT specified by any authoritative document.** The Story 8.1 preflight established that
+the MVP Spec, API Specification, Database & Authentication Architecture and ERD are all silent on
+it — `order_number` appears **only** as a bare field name in the DB §12 and ERD field lists, with no
+format, no uniqueness scope and no generation rule, and it is **not** listed in
+`docs/MISSING_DECISIONS.md`. It is a **project decision taken to fill a documentation gap**,
+approved by the user on 2026-08-25 — it is **not** a pre-existing requirement.
+
+| # | Decision | Gap it fills |
+|---|---|---|
+| 52 | **`Order.order_number` — per-workspace sequential, zero-padded** (e.g. `000001`), with a **`UNIQUE(workspace_id, order_number)`** constraint. Allocated **inside the creating transaction**, concurrency-safe, **retrying on unique conflict**. **No global/platform-wide sequence.** The UUID `id` remains the external primary identifier; `order_number` is the **human-facing** identifier. | DB §12 and ERD both list `order_number` as a field distinct from `id`, but no document defines its format, its uniqueness scope, or how it is generated. A separate `order_number` alongside a UUID pk only earns its place if it is human-meaningful, since coaches and clients quote order numbers. Per-workspace scoping follows the same tenant-isolation logic as the rest of the codebase and avoids revealing platform-wide order volume across tenants. |
+
+---
+
 # 3. Phase 1 Product Goal
 
 The MVP must support the complete coaching business loop:
@@ -1392,7 +1407,28 @@ Workspace-scoped. `user_id` is nullable.
 
 ---
 
-## Story 7.2 — Application Submission
+## Story 7.2 — Application Submission — ✅ COMPLETE (2026-08-25)
+
+**Serializer only — this Story deliberately ships NO endpoint.** The single documented route,
+`POST /public/coaches/{slug}/applications`, is specified by API §7 as ONE atomic seven-step
+transaction whose steps 4–6 are Story 7.3 and whose step 7 needs the `Order` model from Epic 08
+Story 8.1. API §7 requires that "a failure at any step must not leave an Application without its
+Order", so wiring a route performing only steps 1–3 would violate the contract. **Story 7.3 wires
+the endpoint.** This scope was raised as a blocker and explicitly approved.
+
+`ApplicationSubmissionSerializer` accepts exactly the eleven fields API §7 documents.
+**`package_id` is the wire name**, mapped onto the model's `package` relation.
+**`status`, `workspace` and `user` are absent from `Meta.fields`, so none is client-settable** —
+`status` stays server-controlled at `SUBMITTED`, and `workspace` comes from the serializer context,
+never from input (API §25 rule 1). Required `package_id`/`full_name`/`email`; the rest optional,
+mirroring the Story 7.1 model and the approved Story 2.3 precedent.
+
+The package must belong to the resolved workspace **and** be active (API §7 step 2), validated with
+`Package.objects.for_workspace(workspace).filter(is_active=True)`. Because the queryset is **scoped
+rather than branched on**, a cross-workspace package and a non-existent one yield the same error
+code and message template — no enumeration (DB §26).
+
+**No model change, no migration.**
 
 Capture:
 
