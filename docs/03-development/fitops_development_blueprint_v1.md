@@ -1347,7 +1347,40 @@ Application becomes a first-class business record.
 
 # 12. EPIC 07 — Client Applications & OTP
 
-## Story 7.1 — Application Model
+## Story 7.1 — Application Model — ✅ COMPLETE (2026-08-25)
+
+**Model only** — no views, serializers, URLs or endpoints; those belong to Stories 7.2 and 7.3.
+`Order` stays in `commerce` per ERD §19A, and a guard test asserts `applications` exposes exactly
+`{"Application"}` while `commerce` still exposes none.
+
+Implements exactly the **17 fields** given identically by DB §11A and ERD §6, with no invented
+fields (whole-field-set equality is asserted).
+
+**Explicit UUID primary key.** `WorkspaceScopedModel` supplies the `workspace` FK and manager but
+**not** a primary key, so a subclass that omits one silently gets a `BigAutoField` and violates API
+§25 rule 13 — the exact defect seen in Story 4.4. The generated migration was verified to declare a
+UUID pk.
+
+**`user` is nullable** per DB §11A (a public application may come from an anonymous visitor).
+**`status`** is exactly `SUBMITTED` / `REVIEWING` / `APPROVED` / `REJECTED`, default `SUBMITTED`;
+**no transition enforcement was added**, because no document defines a state machine at this layer.
+Migration `0001_initial` creates one table.
+
+**Decision — field types and nullability (undocumented).** Follows the approved Story 2.3
+`ClientProfile` precedent for the same intake data: required `full_name` and `email`; optional
+`phone`, `age`, `gender`, `height`, `weight`, `goal`, `training_experience`, `notes`. `gender` is a
+plain `CharField` with **no choices**, matching that same decision. Locked by a test.
+
+**Decision — `package` uses `on_delete=PROTECT`, not `CASCADE` (undocumented).** Story 5.1 made
+`DELETE /packages/{id}` a HARD delete, and API §8 says to "prefer soft deletion/archive when the
+package has historical orders" — the specs already treat destroying a package with downstream
+history as the thing to avoid. Under `CASCADE` one hard delete would silently erase `Application`
+rows, which DB §11A calls first-class business records. Consequences, both asserted by tests:
+deleting a package **that has applications raises `ProtectedError`** and the package survives; a
+package **with no applications remains deletable**, so Story 5.1 does not regress.
+
+**Open for a later Story:** `DELETE /packages/{id}` can now raise `ProtectedError` and no endpoint
+handles it. Whether that becomes a `409 CONFLICT` is **undecided** — ask, do not guess.
 
 Create the `applications` Django app (`backend/apps/applications/`) and its model:
 
