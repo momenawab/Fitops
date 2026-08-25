@@ -17,9 +17,20 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from .models import CoachSecurity
+from apps.workspaces.public_views import resolve_public_workspace
+
+from .models import CoachSecurity, LoginOTP, Membership
+from .otp import (
+    OTP_MAX_ATTEMPTS,
+    ClientOTPEmailRateThrottle,
+    is_valid_login_code,
+    issue_login_otp,
+    send_login_code_email,
+)
 from .serializers import (
     AuthMeSerializer,
+    ClientOTPRequestSerializer,
+    ClientOTPVerifySerializer,
     CoachLoginSerializer,
     CoachRegistrationSerializer,
     EmailVerificationResendSerializer,
@@ -44,6 +55,33 @@ INVALID_VERIFICATION_TOKEN_MESSAGE = "Invalid or expired verification token."
 INVALID_PASSWORD_RESET_TOKEN_MESSAGE = "Invalid or expired password reset token."
 INVALID_TWO_FACTOR_CODE_MESSAGE = "Invalid two-factor authentication code."
 PENDING_TWO_FACTOR_USER_ID_SESSION_KEY = "pending_2fa_user_id"
+CLIENT_OTP_REQUEST_RESPONSE = {
+    "message": "If an eligible client account exists, a login code has been sent."
+}
+
+
+class InvalidOTP(exceptions.APIException):
+    """Return the documented error code for an unusable OTP."""
+
+    status_code = status.HTTP_400_BAD_REQUEST
+    default_code = "INVALID_OTP"
+    default_detail = "Invalid verification code."
+
+
+class ExpiredOTP(exceptions.APIException):
+    """Return the documented error code for an expired OTP."""
+
+    status_code = status.HTTP_400_BAD_REQUEST
+    default_code = "OTP_EXPIRED"
+    default_detail = "Verification code has expired."
+
+
+class OTPRateLimited(exceptions.APIException):
+    """Return the documented error code for exhausted OTP attempts."""
+
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+    default_code = "OTP_RATE_LIMITED"
+    default_detail = "Too many OTP requests. Please try again later."
 
 
 def _send_verification_email(user):
@@ -66,6 +104,112 @@ def _send_password_reset_email(user):
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[user.email],
     )
+
+
+def _normalize_email(email):
+    """Normalize email consistently for client OTP lookups."""
+    return get_user_model().objects.normalize_email(email).casefold()
+
+
+def _resolve_client_workspace(slug):
+    """Resolve an active public workspace without exposing a lookup failure."""
+    try:
+        return resolve_public_workspace(slug)
+    except exceptions.NotFound:
+        return None
+
+
+def _has_active_client_membership(user, workspace):
+    """Return whether a user is an active client in the resolved workspace."""
+    return Membership.objects.filter(
+        user=user,
+        workspace=workspace,
+        role=Membership.Role.CLIENT,
+        status=Membership.Status.ACTIVE,
+    ).exists()
+
+
+class ClientOTPRequestView(APIView):
+    """Issue a client login OTP without exposing account or workspace state."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ClientOTPEmailRateThrottle, ScopedRateThrottle]
+    throttle_scope = "client_otp_request_ip"
+
+    def post(self, request):
+        """Send a code only for an eligible client and always return one response."""
+        serializer = ClientOTPRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = _normalize_email(serializer.validated_data["email"])
+        workspace = _resolve_client_workspace(serializer.validated_data["workspace_slug"])
+        user = get_user_model().objects.filter(email__iexact=email).first()
+
+        eligible_client = (
+            workspace is not None
+            and user is not None
+            and _has_active_client_membership(user, workspace)
+        )
+        if eligible_client:
+            code = issue_login_otp(user)
+            transaction.on_commit(partial(send_login_code_email, user, code))
+
+        # All account and workspace states intentionally receive this identical response.
+        return Response(CLIENT_OTP_REQUEST_RESPONSE)
+
+
+class ClientOTPVerifyView(APIView):
+    """Verify a client login OTP and start the standard Django session."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "client_otp_verify"
+
+    def post(self, request):
+        """Consume a valid OTP after confirming its client workspace authorization."""
+        serializer = ClientOTPVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = _normalize_email(serializer.validated_data["email"])
+        workspace = _resolve_client_workspace(serializer.validated_data["workspace_slug"])
+        user = get_user_model().objects.filter(email__iexact=email).first()
+
+        if workspace is None or user is None or not _has_active_client_membership(user, workspace):
+            raise InvalidOTP()
+
+        invalid_code = False
+        exhausted = False
+        with transaction.atomic():
+            otp = (
+                LoginOTP.objects.select_for_update()
+                .filter(user=user)
+                .order_by("-created_at")
+                .first()
+            )
+            if otp is None or otp.used_at is not None:
+                raise InvalidOTP()
+            if otp.expires_at <= timezone.now():
+                raise ExpiredOTP()
+            if otp.attempts >= OTP_MAX_ATTEMPTS:
+                raise OTPRateLimited()
+            # check_password performs the required constant-time hash comparison.
+            if not is_valid_login_code(otp, serializer.validated_data["code"]):
+                otp.attempts += 1
+                otp.save(update_fields=["attempts"])
+                # Raise after the transaction so the failed attempt is committed.
+                invalid_code = True
+                exhausted = otp.attempts >= OTP_MAX_ATTEMPTS
+            else:
+                otp.used_at = timezone.now()
+                otp.save(update_fields=["used_at"])
+
+        if invalid_code:
+            if exhausted:
+                raise OTPRateLimited()
+            raise InvalidOTP()
+
+        login(request, user)
+        return Response({"authenticated": True})
 
 
 class CoachRegistrationView(APIView):

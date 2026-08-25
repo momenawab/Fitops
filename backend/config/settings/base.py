@@ -203,6 +203,9 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "common.pagination.FitOpsPageNumberPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_THROTTLE_RATES": {
+        "client_otp_request_email": "3/hour",
+        "client_otp_request_ip": "10/hour",
+        "client_otp_verify": "10/hour",
         "email_resend": "3/minute",
         "email_verify": "10/minute",
         "login": "10/minute",

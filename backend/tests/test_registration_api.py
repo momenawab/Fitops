@@ -421,6 +421,7 @@ class RegistrationArchitectureGuardTests(TestCase):
             "ClientProfile",
             "CoachSecurity",
             "Membership",
+            "LoginOTP",
         }
         self.assertSetEqual(
             concrete_model_names,

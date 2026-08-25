@@ -787,6 +787,7 @@ class TwoFactorArchitectureGuardTests(BaseTwoFactorApiTestCase):
             "ClientProfile",
             "CoachSecurity",
             "Membership",
+            "LoginOTP",
         }
         self.assertSetEqual(
             concrete_model_names,

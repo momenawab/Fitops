@@ -763,6 +763,7 @@ class LoginArchitectureGuardTests(BaseLoginApiTestCase):
             "ClientProfile",
             "CoachSecurity",
             "Membership",
+            "LoginOTP",
         }
         self.assertSetEqual(
             concrete_model_names,
