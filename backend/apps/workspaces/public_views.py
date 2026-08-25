@@ -1,12 +1,15 @@
 """Views for public workspace endpoints."""
 
-from rest_framework import exceptions
+from rest_framework import exceptions, status
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.accounts.models import CoachProfile, Membership
+from apps.applications.serializers import ApplicationSubmissionSerializer
+from apps.applications.services import submit_application
 from apps.coaching.models import Package
 from apps.coaching.serializers import PackageSerializer
 
@@ -74,3 +77,33 @@ class PublicPackagesView(GenericAPIView):
         if page is not None:
             return self.get_paginated_response(PackageSerializer(page, many=True).data)
         return Response(PackageSerializer(packages, many=True).data)
+
+
+class PublicApplicationSubmitView(APIView):
+    """Atomically submit a public application plus its initial order."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "public_application"
+
+    def post(self, request, slug):
+        """Validate and persist an anonymous application for an active workspace slug."""
+        workspace = resolve_public_workspace(slug)
+        serializer = ApplicationSubmissionSerializer(
+            data=request.data,
+            context={"workspace": workspace},
+        )
+        serializer.is_valid(raise_exception=True)
+        application, order = submit_application(workspace, serializer.validated_data)
+        # Unauthenticated endpoint: return only the minimum needed to reference
+        # the submission — never the applicant's personal data (API §7).
+        return Response(
+            {
+                "application_id": str(application.id),
+                "order_id": str(order.id),
+                "order_number": order.order_number,
+                "status": application.status,
+            },
+            status=status.HTTP_201_CREATED,
+        )
