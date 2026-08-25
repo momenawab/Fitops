@@ -1486,7 +1486,42 @@ The Client must have valid Membership for that Workspace before accessing protec
 
 # 13. EPIC 08 — Orders & Manual Payments
 
-## Story 8.1 — Order Model
+## Story 8.1 — Order Model — ✅ COMPLETE (2026-08-25)
+
+**Model + migration only** — no views, serializers, URLs, `Payment`, `Subscription` or Application
+wiring. Implements exactly the ten fields given identically by DB §12 and the ERD, with no invented
+fields.
+
+**Explicit UUID primary key.** `WorkspaceScopedModel` supplies the `workspace` FK and manager but
+**not** a primary key, so a subclass that omits one silently gets a `BigAutoField` and violates API
+§25 rule 13. Verified in the generated migration.
+
+**`client` is a ForeignKey to `accounts.Membership`** — never `User`, never `ClientProfile`. DB §10
+states this explicitly and lists **both** alternatives as *incorrect*, because they lose workspace
+context. This is the single most consequential relationship in the model.
+
+**`status`** is exactly `PENDING_PAYMENT` / `PAYMENT_SUBMITTED` / `APPROVED` / `REJECTED` /
+`CANCELLED`, default `PENDING_PAYMENT` per DB §12's flow. **No transition enforcement** — no
+document defines a state machine at this layer; Story 8.5 owns approval. **`amount`** is
+`DecimalField(max_digits=10, decimal_places=2)` matching `Package.price`; **`currency`** is
+`CharField(max_length=3)`. Both FKs use `on_delete=PROTECT`: an Order is a financial record.
+
+**`order_number` implements §2D decision 52** — per-workspace sequential, zero-padded, enforced by a
+`UNIQUE(workspace, order_number)` database constraint, with **no global sequence**.
+**Allocation is deliberately NOT in this Story**: it happens inside the creating transaction in
+**Story 7.3** (initial Order) and Story 8.2 (subsequent purchases), with retry on conflict. Story
+8.1 ships the field and the constraint that makes that retry loop correct — no `save()` override,
+signal, counter or default.
+
+**Guards updated, not deleted.** The Story 7.1 and 7.2 guards asserting `commerce` defined no models
+existed to stop Epic 08 leaking forward, and fired correctly once Epic 08 legitimately began. 7.1's
+now pins `commerce` at exactly `{"Order"}`; 7.2's now asserts application submission creates no
+Order **rows** — stronger, and still true as Epic 08 grows.
+
+**Methodology note (learned in this Story):** schema-level mutations — constraints, uniqueness,
+indexes, column types — must be applied to the **migration**, not `models.py`. The test database is
+built from migrations, so a `models.py`-only mutation can pass `manage.py check` and remain inert.
+Such mutants are **masked**, and must not be counted as caught.
 
 Create Workspace-scoped Order.
 
