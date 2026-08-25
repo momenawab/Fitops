@@ -29,11 +29,11 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | **Epic 06 — Public Coach Portal** (Story 6.1 complete) |
-| **Current Story** | Story 6.1 — Public Coach Page — **COMPLETE and merged** (2026-08-22) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. ✅ **Epic 05 COMPLETE (3/3)**. **Epic 06 in progress — Story 6.1 complete**; 6.2 NOT started; **6.3 is owned by Epics 07/08 and is deliberately out of Epic 06** |
+| **Current Epic** | **Epic 06 — Public Coach Portal** (Stories 6.1 and 6.2 complete; 6.3 deferred) |
+| **Current Story** | Story 6.2 — Public Packages — **COMPLETE and merged** (2026-08-25) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. ✅ **Epic 05 COMPLETE (3/3)**. **Epic 06 — 2 of its 3 Blueprint Stories delivered (6.1, 6.2); Story 6.3 is BLOCKED on Epics 07/08 and lands with Epic 07, so Epic 06 is NOT marked COMPLETE** |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
-| **Last updated** | 2026-08-22 |
+| **Last updated** | 2026-08-25 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
 
 **Repository state:** git repository initialized on branch `main`, working tree clean. Story 1.1
@@ -587,16 +587,210 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** **Epic 06 — Public Coach Portal is in progress**: Story 6.1
-(Public Coach Page) is complete and merged. **Story 6.2 — Public Packages** is next and has not
-started.
+**No Story currently in progress.** **Epic 06 — Public Coach Portal**: Stories 6.1 (Public Coach
+Page) and 6.2 (Public Packages) are both complete and merged. **The public read surface is done.**
 
-**Story 6.3 (Public Application) is NOT part of Epic 06.** It requires the `Application` model
-(Story 7.1), the client-onboarding transaction (Story 7.3 — which specifies the same endpoint), and
-the `Order` model (Story 8.1). It lands with Epic 07. **Do not build Application or Order models
-ahead of their Epics.** Epic 06 is therefore Stories 6.1 and 6.2 only.
+**Epic 06 is deliberately NOT marked COMPLETE.** The authoritative Blueprint still lists **Story 6.3
+— Public Application** under its Epic 06 section, and that Story is undelivered. It is **BLOCKED**,
+not skipped: it requires the `Application` model (Story **7.1**), the client-onboarding transaction
+(Story **7.3** — which specifies the *same* endpoint), and the `Order` model (Story **8.1**).
+**Story 6.3 therefore lands with Epic 07, and Epic 06 closes at that point.** Do not build
+`Application` or `Order` models ahead of their owning Epics, and do not re-scope Epic 06 to two
+Stories to make it look complete.
+
+**Next per Blueprint §29 order:** **Epic 07 — Client Applications & OTP**, starting with **Story 7.1
+— Application Model** (create the `applications` Django app and the workspace-scoped `Application`
+model, `user_id` nullable). Carry-in: a new externally exposed `WorkspaceScopedModel` subclass
+**must declare its own explicit UUID primary key** — `WorkspaceScopedModel` does not provide one.
 
 Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+
+---
+
+## Completed — Story 6.2
+
+### Story 6.2 — Public Packages  (Epic 06 — Public Coach Portal)
+
+**Status:** ✅ **COMPLETE** — **PR #24 merged as `5a131bf297e371e172a69310aef960462d920554`** on
+2026-08-25. Verified: `git merge-base --is-ancestor` confirms both the merge commit and the PR head
+`0cf1c345…` are contained in `origin/main`, and the merged diff contained exactly the **three**
+intended files (+934 / −5).
+
+#### The contract
+
+**`GET /api/v1/public/coaches/{slug}/packages` → 200 OK.** API Specification §7 documents this
+endpoint as a bare heading with the single word **"Public."** and no response body.
+
+**The response shape was NOT invented.** API Specification **§3 Pagination** is a standing rule for
+*all* collection endpoints — "Collection endpoints use `?page=1&page_size=20`" — and this is one.
+Story 6.1 returned a **composed page object**, not a collection, which is why it was correctly
+unpaginated. The two Stories are consistent, not contradictory.
+
+#### Pagination semantics
+
+The standard API §3 envelope, with exactly four top-level keys:
+
+```json
+{"count": 120, "next": "...", "previous": null, "results": []}
+```
+
+- Query params **`?page=`** and **`?page_size=`**
+- **`PAGE_SIZE = 20`** (the project default) and **`max_page_size = 100`**
+- Supplied by the project-wide `FitOpsPageNumberPagination`
+  (`config/settings/base.py` → `DEFAULT_PAGINATION_CLASS`), reached through the
+  `GenericAPIView` + `self.paginate_queryset(...)` / `self.get_paginated_response(...)` pattern
+  already used by the Story 5.1 list endpoint. **No pagination was hand-rolled and no new
+  pagination class was defined.**
+- An out-of-range page returns **404** with the API §2 envelope.
+
+#### Active-package filtering and ordering
+
+- **`results` contains ONLY `is_active=True` packages of THIS workspace**, scoped with the Epic 05
+  `Package.objects.for_workspace(workspace)` `TenantQuerySet`. Inactive packages and other
+  workspaces' packages are both excluded — asserted by strict id-set equality.
+- **`count` reflects only those packages** — never the cross-workspace total, never including
+  inactive ones.
+- **Deterministic ordering: `-created_at`** (newest first), matching Story 6.1 and the Story 5.1
+  list endpoint. Tests control `created_at` explicitly with
+  `Package.objects.filter(pk=...).update(created_at=...)` so `auto_now_add` cannot mask the order.
+- Each object is the ten-key `PackageSerializer` shape, with `workspace` / `workspace_id` absent
+  from both the parsed objects and the raw response text.
+- **An empty result set is valid**: 200 with `count: 0` and `results: []`, never 404.
+
+#### Public access
+
+**`permission_classes = [AllowAny]` and `authentication_classes = []`.** The project default is
+`IsAuthenticated`, so both are set explicitly; clearing `authentication_classes` also keeps
+session/CSRF machinery off an anonymous GET.
+
+**Anonymous, unaffiliated-authenticated and the workspace's own ACTIVE OWNER all receive
+byte-identical 200 responses** — asserted with `response.content` equality. Authentication on this
+route neither grants nor restricts anything.
+
+**A workspace with no ACTIVE OWNER still serves its packages** — unlike the coach block on the
+Story 6.1 page, package listing does not depend on an owner existing.
+
+**No rate limiting.** API §22 mandates throttles for "public application endpoints" — the Story 6.3
+POST — not public reads.
+
+#### Anti-enumeration — SUSPENDED and unknown slugs are indistinguishable
+
+A `SUSPENDED` workspace's slug and a slug that does not exist both return a **404 that is
+byte-identical**, and **never 403**. Beyond that, the 404 is also **byte-identical to what
+`GET /public/coaches/{slug}` returns** for the same two cases, so a visitor cannot distinguish an
+existing-but-suspended workspace from a non-existent one through either public endpoint. The 404
+follows API §2: top-level key set exactly `{"error"}`, `code == "NOT_FOUND"`, no `fields` key.
+
+#### Shared public workspace resolver (explicit implementation decision)
+
+Both public endpoints previously resolved the workspace with the same inline block. That logic is
+now a **module-level** helper in `apps/workspaces/public_views.py`:
+
+```python
+def resolve_public_workspace(slug):
+    """Resolve an active workspace from a public slug, or 404 indistinguishably."""
+```
+
+Both `PublicCoachView` and `PublicPackagesView` call it, so **the two endpoints cannot drift apart**.
+`PublicCoachView`'s observable behaviour is completely unchanged — same 200 body, same 404 bytes.
+
+It is deliberately a **module-level function, not a view method or `@staticmethod`**. Passing one
+view's `self` into another class's helper is the exact cross-class binding mistake that produced a
+real defect in Story 4.3; keeping the helper at module level makes that impossible.
+
+**This was a Master judgment call and it is locked by a test**: the byte-identical-404 comparison
+**across both endpoints**, plus mutation **M9**, which bypasses the helper with `get_object_or_404`
+and is caught precisely because the two endpoints' 404 bodies then differ.
+
+`resolve_workspace_context` (`common/middleware/workspace.py`) is deliberately **not** used — it
+requires an authenticated user and a Membership, neither of which exists here.
+
+#### Search and coach-facing filters are NOT part of this endpoint
+
+**No search. No active/inactive filter. No status filter. No query filtering of any kind beyond
+pagination.**
+
+API §8 lists "Search" and "Active/inactive filter" **only** for the coach-facing `GET /packages`.
+They are **not documented for this public endpoint**, and an active/inactive filter would be
+meaningless here since only active packages are ever public. Adding either would have been
+inventing undocumented behaviour.
+
+Undocumented query params are **ignored, not honoured**: tests assert that `?search=<package name>`,
+`?is_active=false` and `?status=SUSPENDED` each return results identical to the unfiltered request,
+and that `?is_active=false` can never surface an inactive package.
+
+**No model change and no migration.**
+
+#### Mutation testing — 9 of 9 caught
+
+Every mutation was proven to **apply** and to **execute** (`manage.py check` clean) before being
+counted. The harness explicitly records a system-check or import failure as **"did not execute"**,
+never as caught — a non-zero exit alone is not evidence. Every mutation was restored from the
+**git** baseline with byte-identical verification.
+
+| # | Mutation | Failures |
+|---|---|---|
+| M1 | `status=ACTIVE` dropped — SUSPENDED workspaces become visible | 4 |
+| M2 | `is_active=True` dropped — inactive packages leak into the public list | 5 |
+| M3 | `for_workspace` → `unscoped()` — cross-tenant leak | 2 |
+| M4 | ordering flipped to oldest-first | 1 |
+| M5 | pagination removed — bare list returned instead of the envelope | 1 + 19 errors |
+| M6 | `AllowAny` removed — the endpoint stops being public | 33 |
+| M7 | undocumented `is_active` filter honoured | 2 |
+| M8 | undocumented `search` filter honoured | 1 |
+| M9 | shared resolver bypassed — 404 drifts from Story 6.1 | 1 |
+
+#### Verification — Master-run, real exit codes captured directly
+
+| Check | Exit |
+|---|---|
+| `manage.py check` | **0** |
+| `makemigrations --check --dry-run` | **0** — no changes detected |
+| Focused tests (`tests.test_public_packages_api`) | **33/33** |
+| Full Django suite on real PostgreSQL | **665/665** |
+| `checks.sh` | **0** — all 7 gates PASS |
+| `npm run build` | **0** |
+
+**CI evidence.** The run log reads `Merge 0cf1c3450108… into 51d798b93801…` — the live PR head into
+the then-current `main`, confirmed equal to live `origin/main` at review time.
+
+#### Delegation and AGY independence
+
+Codex (implementation: `public_views.py`, `urls.py`) ∥ AGY (33 tests,
+`test_public_packages_api.py`) on disjoint files; GLM-5.3 correctly idle — no genuinely disjoint
+third task existed, and none was manufactured.
+
+**AGY was GENUINELY INDEPENDENT.** It worked in a separate worktree at `main` where the endpoint
+does not exist, and its brief stated the tests were expected to fail there. It never saw Codex's
+diff. Independence was verified **mechanically**, not assumed: the delivered file imports nothing
+from `public_views`, `public_serializers`, `common.pagination` or `common.middleware`; calls no view
+or module helper; references no view or pagination class by name; and mocks nothing. 33 tests, no
+lines over 100 characters. Master's only change was `ruff format`; **no test logic was altered.**
+
+#### Incidents and corrections
+
+**The first dispatch was lost entirely.** The session scratchpad was reaped between the completion
+poll and the following turn, and the work was still uncommitted, so both Codex's implementation and
+AGY's test file vanished — both branches were verified still at `51d798b`. This was **reported
+plainly rather than reconstructed from the poll output**. Remedies applied: worktrees moved to
+`/tmp/fitops-work` (outside the reaped session scratchpad), and **each worker's output is now
+committed the moment it returns**, before any review or mutation work.
+
+**AGY failed once on path canonicalization** — macOS resolves `/tmp` → `/private/tmp`, so the
+`write_file` permission entry did not match the canonical path and the write was auto-denied. One
+diagnosed retry succeeded; the cause was fixed rather than retried blindly.
+
+#### Track boundary — Mobile track untouched
+
+This Story was **Backend/Web track only**. **No file under `mobile/` or `docs/05-mobile/` was read,
+modified, deleted or committed.** Worker briefs carried an explicit instruction to leave those paths
+exactly as found. The merge commit integrating `origin/main` into local `main` contains **zero**
+`mobile/` files (verified). The API contract is the only integration boundary between the tracks.
+
+**Note for the record:** at merge time local `main` carried an **unpushed** Mobile-track commit
+(`6aac13e feat(mobile): establish Flutter foundation`), plus uncommitted Mobile-track working-tree
+changes. These were left entirely alone; local `main` was reconciled with `origin/main` by a merge
+commit that touches no mobile file.
 
 ---
 
