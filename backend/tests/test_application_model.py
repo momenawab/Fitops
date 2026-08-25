@@ -674,15 +674,20 @@ class ApplicationArchitectureGuardTests(TestCase):
             "applications app must define exactly {'Application'}; no Order or other model.",
         )
 
-    def test_commerce_app_still_exposes_no_models(self):
-        """Guards architectural boundary: commerce app must define no models in Story 7.1.
+    def test_commerce_app_exposes_only_the_order_model(self):
+        """Guards the applications/commerce boundary: commerce owns Order and nothing more.
 
-        Epic 08 owns commerce and Order models. Story 7.1 must not pull Order models forward.
+        This assertion originally read "commerce defines no models", which was correct while
+        Epic 08 had not started — it existed to stop Story 7.1 pulling Order forward. Epic 08
+        Story 8.1 has since landed the Order model legitimately, so the guard was narrowed
+        rather than deleted: it now pins the boundary at exactly {"Order"}, which still fails
+        loudly if Payment or Subscription (Stories 8.3+) appear early, and still fails if the
+        applications app ever grows an Order of its own.
         """
         commerce_app = apps.get_app_config("commerce")
         concrete_model_names = {model._meta.object_name for model in commerce_app.get_models()}
         self.assertSetEqual(
             concrete_model_names,
-            set(),
-            "commerce app must define no models prior to Epic 08.",
+            {"Order"},
+            "commerce must expose exactly Order until Stories 8.3+ add Payment/Subscription.",
         )

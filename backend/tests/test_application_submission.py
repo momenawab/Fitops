@@ -646,12 +646,17 @@ class ApplicationSubmissionArchitectureAndBoundaryGuardTests(BaseApplicationSubm
             "Application submission must not create any ClientProfile instance.",
         )
 
-        commerce_app = apps.get_app_config("commerce")
-        commerce_model_names = {model._meta.object_name for model in commerce_app.get_models()}
-        self.assertSetEqual(
-            commerce_model_names,
-            set(),
-            "commerce app must define no models prior to Epic 08.",
+        # This originally asserted the commerce app defined NO models, which held only while
+        # Epic 08 had not started. Story 8.1 has since landed the Order model legitimately, so
+        # the check was replaced with the stronger, permanently-true invariant: submitting an
+        # application must create no Order ROWS. That is the property Story 7.2 actually owns —
+        # the initial Order is created by the Story 7.3 transaction, never by intake alone —
+        # and unlike the old assertion it keeps working as Epic 08 grows.
+        order_model = apps.get_model("commerce", "Order")
+        self.assertEqual(
+            order_model.objects.count(),
+            0,
+            "Application submission must not create any Order; that is the Story 7.3 flow.",
         )
 
     def test_applications_app_exposes_exactly_application_model(self):
