@@ -29,8 +29,8 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | **Epic 07 — Client Applications & OTP** (7.1, 7.2 complete; 7.3 BLOCKED on Epic 08 Story 8.1) |
-| **Current Story** | Story 7.2 — Application Submission — **COMPLETE and merged** (2026-08-25) |
+| **Current Epic** | **Epic 08 — Orders & Manual Payments** (Story 8.1 complete) — Epic 07 resumes at Story 7.3, now UNBLOCKED |
+| **Current Story** | Story 8.1 — Order Model — **COMPLETE and merged** (2026-08-25) |
 | **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. ✅ **Epic 05 COMPLETE (3/3)**. **Epic 06 — 2 of its 3 Blueprint Stories delivered (6.1, 6.2); Story 6.3 BLOCKED and lands with Epic 07, so Epic 06 is NOT marked COMPLETE**. **Epic 07 in progress — Story 7.1 complete**; 7.2 not started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-25 |
@@ -587,25 +587,160 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** **Epic 07** — Stories 7.1 (Application Model) and 7.2
-(Application Submission serializer) are complete and merged.
+**No Story currently in progress.** **Story 8.1 — Order Model is complete and merged**, which
+**UNBLOCKS Story 7.3**.
 
-**Story 7.3 is BLOCKED on Epic 08 Story 8.1 — this ordering is mandatory, not a preference.**
-API §7 specifies `POST /public/coaches/{slug}/applications` as ONE atomic seven-step transaction
-whose **step 7 creates the initial `Order`**, and states that "a failure at any step must not leave
-an Application without its Order". Story 7.3 therefore **cannot be implemented** until the `Order`
-model exists. **Do not wire a partial endpoint, do not stub an Order, and do not create Order as
-part of 7.3.**
+**Story 7.3 — Client Onboarding is the next Story.** It implements the complete atomic submission
+transaction behind `POST /public/coaches/{slug}/applications` (API §7): resolve workspace → validate
+package → create `Application` → create/resolve `User` + `ClientProfile` → create
+`Membership(role=CLIENT)` → associate `Application.user_id` → create the initial `Order`. API §7
+requires that "a failure at any step must not leave an Application without its Order", so the whole
+operation is one transaction.
 
-**The next implementation Story is therefore Epic 08 Story 8.1 — Order Model.** It is independently
-implementable now: it depends only on `Workspace`, `Membership` and `Package`, all complete.
-`order_number` was the one documentation gap and is resolved as **Blueprint §2C decision 52**.
+**Story 7.3 owns `order_number` ALLOCATION.** Story 8.1 deliberately shipped only the field and the
+`UNIQUE(workspace, order_number)` constraint. Per **Blueprint §2D decision 52**, allocation is
+per-workspace sequential, zero-padded, performed **inside the transaction**, **concurrency-safe with
+retry on unique conflict**, and **never** a global/platform-wide counter.
 
-**Sequence:** 8.1 → 7.3 → (7.3 also satisfies **Story 6.3**, which is the *same* endpoint, closing
-Epic 06). 8.1 and 7.3 **cannot be parallelized** — it is a hard code dependency, not a file
-conflict.
+**Story 6.3 is satisfied by Story 7.3, not by a second endpoint.** `POST /public/coaches/{slug}/
+applications` is the *same* public application surface the Blueprint lists under both 6.3 and 7.3.
+**Do NOT implement 6.3 as a separate duplicate implementation.** Epic 06 closes when 7.3 lands.
 
 Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+
+---
+
+## Completed — Story 8.1
+
+### Story 8.1 — Order Model  (Epic 08 — Orders & Manual Payments)
+
+**Status:** ✅ **COMPLETE** — **PR #30 merged as `c0884702f64f2d98096a011b149e279bcf1bf844`** on
+2026-08-25. Verified: `git merge-base --is-ancestor` confirms both the merge commit and the PR head
+`08dbfaf4…` are contained in `origin/main`, and the merged diff contained exactly the **five**
+intended files (+897 / −12).
+
+**This Story unblocks Story 7.3**, which could not be implemented without it: API §7 step 7 creates
+the initial `Order` inside the atomic submission transaction.
+
+#### The model — exactly the ten documented fields
+
+DB Architecture **§12** and the ERD give an **identical** field list, implemented exactly with **no
+invented fields** (whole-field-set equality is asserted):
+
+```text
+id, workspace, client, package, order_number, amount, currency, status, created_at, updated_at
+```
+
+| Aspect | Decision |
+|---|---|
+| Primary key | **Explicit UUID.** `WorkspaceScopedModel` supplies the `workspace` FK and manager but **not** a pk; omitting one silently yields a `BigAutoField`, violating API §25 rule 13. Confirmed by reading the generated migration |
+| **`client`** | **FK to `accounts.Membership`** — never `User`, never `ClientProfile`. DB §10 states this explicitly and lists **both** alternatives as *incorrect*, because they lose workspace context. Migration confirms `to="accounts.membership"` |
+| `package` | FK to `coaching.Package` |
+| `status` | Exactly `PENDING_PAYMENT` / `PAYMENT_SUBMITTED` / `APPROVED` / `REJECTED` / `CANCELLED`, default **`PENDING_PAYMENT`** (DB §12's flow starts there). **No transition enforcement** — no document defines a state machine at this layer; Story 8.5 owns approval |
+| `amount` | `DecimalField(max_digits=10, decimal_places=2)`, matching `Package.price`. Money is never a float |
+| `currency` | `CharField(max_length=3)`, matching `Package.currency` |
+| `on_delete` | **`PROTECT` on both FKs** — an Order is a financial record and must not vanish when a package or membership is removed, mirroring the approved Story 7.1 decision for `Application.package` |
+
+#### `order_number` — approved Blueprint §2D decision 52
+
+Per-workspace sequential, zero-padded, guaranteed by a **`UNIQUE(workspace, order_number)`**
+database constraint. **No global sequence** — a platform-wide counter would leak order volume across
+tenants. The UUID `id` remains the external identifier; `order_number` is the human-facing one.
+
+**Allocation is deliberately NOT implemented in this Story.** It belongs inside the creating
+transaction — **Story 7.3** for the initial Order, Story 8.2 for subsequent purchases — with retry
+on unique conflict. Story 8.1 ships **the field and the constraint that makes that retry loop
+correct**: no `save()` override, no signal, no counter model, no `default=`. `order_number` is
+therefore required and supplied by the caller.
+
+#### Two pre-existing guards narrowed, not deleted
+
+Stories 7.1 and 7.2 each asserted the `commerce` app defined **no** models. Those guards existed
+specifically to stop Epic 08 leaking forward into Epic 07, and they **fired correctly** the moment
+Epic 08 legitimately began. Both were **narrowed rather than removed**:
+
+- **Story 7.1's guard** now pins `commerce` at exactly `{"Order"}`, so `Payment` or `Subscription`
+  appearing early (Stories 8.3+) still fails loudly.
+- **Story 7.2's guard** now asserts that submitting an application creates **no Order ROWS** — the
+  invariant that Story actually owns. This is **stronger** than the original and stays true as
+  Epic 08 grows, whereas "commerce has no models" was only ever true before 8.1.
+
+#### Mutation testing — 10 of 10 invariants covered, with an important methodology finding
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | explicit UUID pk removed → `BigAutoField` | **caught** (1 + 22 errors) |
+| M2 | `client` retargeted to `User` | **caught** (1 + 22) |
+| M3 | `client` retargeted to `ClientProfile` | **caught** (1 + 22) |
+| M4 | `order_number` uniqueness made global *(in `models.py`)* | **masked — see below** |
+| M5 | unique constraint removed *(in `models.py`)* | **masked — see below** |
+| M6 | status default flipped off `PENDING_PAYMENT` | **caught** (1) |
+| M7 | sixth undocumented status (`REFUNDED`) added | **caught** (1) |
+| M8 | `amount` changed to `FloatField` | **caught** (1) |
+| M9 | `order_number` made optional | **caught** (1) |
+| M10 | undocumented field added (`paid_at`) | **caught** (1 + 22) |
+
+**M4 and M5 initially SURVIVED, and this was investigated rather than excused** — they guard
+decision 52's core invariant, so a shrug would have been unacceptable.
+
+**Root cause:** the test database is built from **MIGRATIONS**, not from `models.py`. Mutating
+`Meta.constraints` never reached the schema, so those mutations **applied but never executed the
+intended code path**. Re-run against the migration, which is what actually defines the constraint:
+
+| | Result |
+|---|---|
+| **M4b** uniqueness made global **in the migration** | **CAUGHT** — the different-workspaces test fails |
+| **M5b** constraint widened so duplicates pass | **CAUGHT** — the same-workspace duplicate test fails |
+| **M4c** `models.py` drift with the schema unchanged | **DETECTED** by `makemigrations --check`, itself a `checks.sh` gate |
+
+So decision 52 is locked on **both** axes. M4/M5 on `models.py` are recorded as **masked mutants** —
+**not counted as caught**, and **not** test gaps.
+
+> **STANDING METHODOLOGY RULE, learned here:** for any **schema-level** invariant (constraints,
+> uniqueness, indexes, column types), the mutation must target the **migration**, because the
+> migration is the executed path. A mutation applied only to `models.py` can pass `manage.py check`
+> and still be inert against the test database.
+
+Every mutated file was restored from the **git** baseline and verified byte-identical.
+
+#### Verification — Master-run, real exit codes captured directly
+
+| Check | Exit |
+|---|---|
+| `manage.py check` | **0** |
+| `makemigrations --check --dry-run` | **0** — no changes |
+| Focused tests (`tests.test_order_model`) | **27/27** |
+| Full Django suite on real PostgreSQL | **739/739** |
+| `checks.sh` | **0** — all 7 gates PASS |
+| `npm run build` | **0** |
+
+**CI evidence:** `Merge 08dbfaf42614… into 6f8f997ffe63…` — the live PR head into the then-current
+`origin/main`.
+
+#### Delegation
+
+Codex (model + generated migration) ∥ AGY (27 tests, `test_order_model.py`) on disjoint files;
+**GLM-5.3 correctly idle** — no genuinely disjoint third task existed and none was manufactured.
+
+**Codex needed ZERO corrections.** It declared the explicit UUID pk, targeted `accounts.Membership`
+for `client`, applied the per-workspace unique constraint, and added no allocation logic.
+
+**AGY authored the tests INDEPENDENTLY** in a separate worktree branched from `origin/main` where
+the model does not exist. Verified mechanically: no view/serializer imports, no HTTP tests, no
+mocks, no `TestCase` class-attribute binding trap, no line over 100 characters. Its `order_number`
+tests assert the *behaviour* of decision 52 — same number in the same workspace raises
+`IntegrityError`; **the same number in two different workspaces both succeed** (a test asserting
+global uniqueness would have been wrong); and `"000001"` round-trips with leading zeros intact.
+
+#### Track boundary — Mobile track untouched
+
+Backend/Web track only. **No file under `mobile/` or `docs/05-mobile/` was read, modified, deleted
+or committed.** Branched from `origin/main`, so no Mobile-track commit was in the base or the PR,
+and tracking was published from an isolated worktree cut from `origin/main`.
+
+**Next:** **Story 7.3 — Client Onboarding** (the atomic Application submission endpoint), now
+**unblocked**. Completing it also satisfies **Story 6.3**, which is the *same* public application
+surface — 6.3 must **not** be implemented as a second endpoint.
 
 ---
 
