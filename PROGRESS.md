@@ -29,8 +29,8 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | **Epic 07 — Client Applications & OTP** (Story 7.1 complete) |
-| **Current Story** | Story 7.1 — Application Model — **COMPLETE and merged** (2026-08-25) |
+| **Current Epic** | **Epic 07 — Client Applications & OTP** (7.1, 7.2 complete; 7.3 BLOCKED on Epic 08 Story 8.1) |
+| **Current Story** | Story 7.2 — Application Submission — **COMPLETE and merged** (2026-08-25) |
 | **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. ✅ **Epic 05 COMPLETE (3/3)**. **Epic 06 — 2 of its 3 Blueprint Stories delivered (6.1, 6.2); Story 6.3 BLOCKED and lands with Epic 07, so Epic 06 is NOT marked COMPLETE**. **Epic 07 in progress — Story 7.1 complete**; 7.2 not started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-25 |
@@ -587,25 +587,148 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** **Epic 07 — Client Applications & OTP is the active Epic**;
-Story 7.1 (Application Model) is complete and merged. **Story 7.2 — Application Submission** is next
-and has not started.
+**No Story currently in progress.** **Epic 07** — Stories 7.1 (Application Model) and 7.2
+(Application Submission serializer) are complete and merged.
 
-**Epic 06 remains open.** Stories 6.1 and 6.2 are complete, but the Blueprint still lists **Story
-6.3 — Public Application** under Epic 06 and that Story is undelivered. It is **BLOCKED, not
-skipped**: it needs the `Application` model (Story 7.1 — now DONE), the client-onboarding
-transaction (Story **7.3**, which specifies the *same* endpoint), and the `Order` model (Story
-**8.1**). **Story 6.3 therefore lands with Epic 07/08, and Epic 06 closes at that point.** Do not
-re-scope Epic 06 to two Stories to make it look complete.
+**Story 7.3 is BLOCKED on Epic 08 Story 8.1 — this ordering is mandatory, not a preference.**
+API §7 specifies `POST /public/coaches/{slug}/applications` as ONE atomic seven-step transaction
+whose **step 7 creates the initial `Order`**, and states that "a failure at any step must not leave
+an Application without its Order". Story 7.3 therefore **cannot be implemented** until the `Order`
+model exists. **Do not wire a partial endpoint, do not stub an Order, and do not create Order as
+part of 7.3.**
 
-**Carry-in for Story 7.2 and beyond:** `Application.package` is `on_delete=PROTECT`, so deleting a
-package that has applications now raises `ProtectedError`. The coach-facing `DELETE /packages/{id}`
-endpoint does not yet handle that. **Whether it surfaces as `409 CONFLICT` is UNDECIDED — stop and
-ask rather than guessing** when a Story actually touches that endpoint. Also note `blank` on the
-model flows straight into the Story 7.2 submission serializer, so the required/optional split is
-already pinned by a test.
+**The next implementation Story is therefore Epic 08 Story 8.1 — Order Model.** It is independently
+implementable now: it depends only on `Workspace`, `Membership` and `Package`, all complete.
+`order_number` was the one documentation gap and is resolved as **Blueprint §2C decision 52**.
+
+**Sequence:** 8.1 → 7.3 → (7.3 also satisfies **Story 6.3**, which is the *same* endpoint, closing
+Epic 06). 8.1 and 7.3 **cannot be parallelized** — it is a hard code dependency, not a file
+conflict.
 
 Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+
+---
+
+## Completed — Story 7.2
+
+### Story 7.2 — Application Submission  (Epic 07 — Client Applications & OTP)
+
+**Status:** ✅ **COMPLETE** — **PR #28 merged as `f0cedb5cab2a2a8ed040b348984155a35da6c86b`** on
+2026-08-25. Verified: `git merge-base --is-ancestor` confirms both the merge commit and the PR head
+`712ce89c…` are contained in `origin/main`, and the merged diff contained exactly the **two**
+intended files (+713).
+
+#### Why this Story ships NO endpoint — the defining decision
+
+Blueprint Story 7.2 says only **"Capture:"** followed by the field list, and **names no route**.
+
+The single documented application endpoint, `POST /public/coaches/{slug}/applications`, is specified
+by **API §7** as **one atomic seven-step transaction**:
+
+| Steps | Owner |
+|---|---|
+| 1–3 resolve workspace → validate package → create `Application` | Story 7.2 data + Story 7.3 wiring |
+| 4–6 create/resolve `User` + `ClientProfile`, create `Membership(role=CLIENT)`, associate `user_id` | **Story 7.3** |
+| 7 create the **initial `Order`** | **Epic 08, Story 8.1** |
+
+API §7 states: *"a failure at any step must not leave an Application without its Order or an Order
+without its Application."* **Wiring a live route that performed only steps 1–3 would create
+Applications with no Order and violate that contract.** The route is therefore deliberately left
+unwired until Story 7.3.
+
+**This was raised as a genuine blocker and the serializer-only scope was explicitly approved by the
+user.** It is not an oversight and must not be "fixed" by wiring the endpoint early.
+
+#### The serializer
+
+`ApplicationSubmissionSerializer` accepts exactly the **eleven** fields documented in API §7:
+
+```text
+package_id, full_name, email, phone, age, gender, height, weight,
+goal, training_experience, notes
+```
+
+| Rule | Implementation |
+|---|---|
+| Wire name | **`package_id`** is the public JSON key, mapped onto the model's `package` relation via `source="package"` |
+| `status` | **NOT client-settable** — absent from `Meta.fields`; stays server-controlled at `SUBMITTED` |
+| `workspace` | **NOT client-settable** — taken from serializer `context["workspace"]`, never from input (**API §25 rule 1**: never trust a client-supplied workspace id) |
+| `user` | **NOT client-settable** — stays `None`; Story 7.3 associates it |
+| Required | `package_id`, `full_name`, `email` |
+| Optional | `phone`, `age`, `gender`, `height`, `weight`, `goal`, `training_experience`, `notes` |
+| Package validation | `Package.objects.for_workspace(workspace).filter(is_active=True)` — API §7 step 2 |
+
+Required/optional **mirrors the Story 7.1 model exactly**, which followed the approved Story 2.3
+`ClientProfile` precedent. Epic 03/05 tenant infrastructure is **reused, not rebuilt**.
+
+**Anti-enumeration.** Because the package queryset is **scoped rather than branched on**, a package
+belonging to another workspace and a package that does not exist produce the **same error code and
+the same message template** — a submitter cannot learn that a package exists in someone else's
+workspace (DB §26).
+
+**No model change and no migration.** No `Order`, `User`, `ClientProfile` or `Membership` logic — a
+test asserts the `commerce` app still exposes **no** models, so Story 7.3 and Epic 08 work cannot
+leak forward into this Story.
+
+#### Mutation testing — 8 of 8 caught
+
+Each mutation was proven to **apply** and to pass **`manage.py check`** before being counted; the
+harness records a failure at either stage as "did not apply" / "did not execute" and **never** as
+caught. All restored from the **git** baseline, byte-identical.
+
+| # | Mutation | Failures |
+|---|---|---|
+| M1 | workspace scoping dropped — cross-tenant package accepted | 2 |
+| M2 | `is_active` filter dropped — inactive package accepted | 1 |
+| M3 | `status` becomes client-settable | 3 |
+| M4 | `workspace` becomes client-settable (API §25 rule 1) | 6 + 1 error |
+| M5 | `user` becomes client-settable | 1 |
+| M6 | `create()` takes workspace from input instead of context | 12 errors |
+| M7 | `full_name` made optional | 1 |
+| M8 | `email` validation weakened to `CharField` | 4 |
+
+#### Verification — Master-run, real exit codes captured directly
+
+| Check | Exit |
+|---|---|
+| `manage.py check` | **0** |
+| `makemigrations --check --dry-run` | **0** — no changes |
+| Focused tests (`tests.test_application_submission`) | **19/19** |
+| Full Django suite on real PostgreSQL | **712/712** |
+| `checks.sh` | **0** — all 7 gates PASS |
+| `npm run build` | **0** |
+
+**CI evidence:** `Merge 712ce89c3bd1… into 7e0355ceb62e…` — the live PR head into the then-current
+`origin/main`.
+
+#### Delegation and one correction
+
+Codex (serializer) ∥ AGY (19 tests) on disjoint files; **GLM-5.3 correctly idle** — no genuinely
+disjoint third task existed and none was manufactured. **Codex needed zero corrections.**
+
+**AGY was genuinely blind** — a separate worktree branched from `origin/main` where the serializer
+does not exist, with the brief stating its tests were expected to fail there. This Story required
+**one deliberate exception**: with no endpoint, the tests must import the serializer directly, so the
+brief permitted exactly that one import and kept views, URLs, `APIClient` and mocks off-limits.
+Verified mechanically: no view imports, no HTTP tests, no mocks, no `TestCase` class-attribute
+binding trap, no line over 100 characters.
+
+**One Master correction, disclosed.** An AGY assertion compared the two package errors **raw** and
+failed — but only because each error echoes back the UUID the caller itself submitted, a difference
+that carries **no information** (the submitter already knows the id they sent). The implementation
+was correct. The assertion now compares the error **code** and the message **template** with the
+echoed id normalised, plus an assertion that the owning workspace's id never appears — a **stronger**
+test of the real invariant than the original.
+
+#### Track boundary — Mobile track untouched
+
+Backend/Web track only. **No file under `mobile/` or `docs/05-mobile/` was read, modified, deleted
+or committed.** Branched from `origin/main`, so no Mobile-track commit was in the base or the PR. At
+tracking time local `main` carried **four** unpublished Mobile-track commits; tracking was published
+from an isolated worktree cut from `origin/main`, so none of them was published by this track.
+
+**Next:** **Story 8.1 — Order Model** (Epic 08). Story 7.3 is **blocked on it** and must not be
+started first: API §7 step 7 requires the initial `Order` inside the same atomic transaction.
 
 ---
 
