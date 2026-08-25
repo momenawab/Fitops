@@ -1281,7 +1281,42 @@ Display:
 
 ---
 
-## Story 6.2 — Public Packages
+## Story 6.2 — Public Packages — ✅ COMPLETE (2026-08-25)
+
+**`GET /public/coaches/{slug}/packages` → 200** — the **paginated public sibling** of the Story 6.1
+coach page. API §7 documents it as a bare heading with the single word "Public.".
+
+**Paginated per API §3**, which is a standing rule for *all* collection endpoints
+(`?page=` / `?page_size=`, `PAGE_SIZE = 20`, `max_page_size = 100`), returning exactly
+`{count, next, previous, results}` via the project-wide `FitOpsPageNumberPagination`. Story 6.1
+returned a **composed page object**, not a collection, which is why it is correctly unpaginated —
+the two Stories are consistent. An out-of-range page returns 404 with the API §2 envelope.
+
+**`results` holds only `is_active=True` packages of this workspace**, ten-key `PackageSerializer`,
+ordered **`-created_at`**, reusing the Epic 05 `for_workspace` scoping and serializer — **no
+duplication**. `count` reflects only those packages. An empty list is valid and returns 200.
+
+**Public:** `AllowAny` with `authentication_classes = []`. Anonymous, unaffiliated-authenticated and
+the workspace's own ACTIVE OWNER all receive **byte-identical** 200 responses. A workspace with no
+ACTIVE OWNER still serves its packages. No throttle — API §22 covers the Story 6.3 POST, not public
+reads.
+
+**Anti-enumeration:** a SUSPENDED workspace's slug and an unknown slug return a **404 byte-identical
+to each other AND to the Story 6.1 endpoint's 404**, never 403.
+
+**NO search and NO active/inactive filter.** API §8 documents those **only** for the coach-facing
+`GET /packages`; they are not part of this public endpoint, and an active/inactive filter is
+meaningless where only active packages are public. Undocumented query params are **ignored, not
+honoured**.
+
+**Implementation decision — shared public resolver.** Workspace resolution common to both public
+endpoints was extracted into a **module-level** `resolve_public_workspace(slug)` in
+`apps/workspaces/public_views.py`, called by both views so they cannot drift apart.
+`PublicCoachView`'s observable behaviour is unchanged. It is module-level rather than a view method
+because passing one view's `self` into another class's helper caused a real defect in Story 4.3.
+The decision is locked by a test asserting the two endpoints' 404s are byte-identical.
+
+**No model change, no migration.**
 
 Implement:
 
@@ -1291,7 +1326,14 @@ GET /public/coaches/{slug}/packages
 
 ---
 
-## Story 6.3 — Public Application
+## Story 6.3 — Public Application — ⛔ BLOCKED (owned by Epics 07/08)
+
+**Not delivered in Epic 06, and deliberately not re-scoped out of it.** This Story requires the
+`Application` model (Story **7.1**), the client-onboarding transaction (Story **7.3**, which
+specifies the *same* endpoint), and the `Order` model (Story **8.1**). It therefore **lands with
+Epic 07**, and **Epic 06 closes at that point** — Epic 06 is not marked COMPLETE while this Story
+remains listed under it and undelivered.
+
 
 Implement:
 
