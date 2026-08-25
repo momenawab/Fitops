@@ -29,9 +29,9 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | **Epic 08 — Orders & Manual Payments** (Story 8.1 complete) — Epic 07 resumes at Story 7.3, now UNBLOCKED |
-| **Current Story** | Story 8.1 — Order Model — **COMPLETE and merged** (2026-08-25) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. ✅ **Epic 05 COMPLETE (3/3)**. **Epic 06 — 2 of its 3 Blueprint Stories delivered (6.1, 6.2); Story 6.3 BLOCKED and lands with Epic 07, so Epic 06 is NOT marked COMPLETE**. **Epic 07 in progress — Story 7.1 complete**; 7.2 not started |
+| **Current Epic** | **Epic 07 — Client Applications & OTP** (7.1, 7.2, 7.3 complete; 7.4 not started). ✅ **Epic 06 COMPLETE** |
+| **Current Story** | Story 7.3 — Client Onboarding — **COMPLETE and merged** (2026-08-25) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. ✅ **Epic 05 COMPLETE (3/3)**. ✅ **Epic 06 COMPLETE (3/3)** — 6.1, 6.2, and **6.3 satisfied by the Story 7.3 endpoint** (the same public application surface; never duplicated). **Epic 07 in progress — Story 7.1 complete**; 7.2 not started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-25 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -587,26 +587,227 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** **Story 8.1 — Order Model is complete and merged**, which
-**UNBLOCKS Story 7.3**.
+**No Story currently in progress.**
 
-**Story 7.3 — Client Onboarding is the next Story.** It implements the complete atomic submission
-transaction behind `POST /public/coaches/{slug}/applications` (API §7): resolve workspace → validate
-package → create `Application` → create/resolve `User` + `ClientProfile` → create
-`Membership(role=CLIENT)` → associate `Application.user_id` → create the initial `Order`. API §7
-requires that "a failure at any step must not leave an Application without its Order", so the whole
-operation is one transaction.
+✅ **EPIC 06 — Public Coach Portal is COMPLETE (3/3).**
 
-**Story 7.3 owns `order_number` ALLOCATION.** Story 8.1 deliberately shipped only the field and the
-`UNIQUE(workspace, order_number)` constraint. Per **Blueprint §2D decision 52**, allocation is
-per-workspace sequential, zero-padded, performed **inside the transaction**, **concurrency-safe with
-retry on unique conflict**, and **never** a global/platform-wide counter.
+| Story | Status |
+|---|---|
+| 6.1 Public Coach Page | ✅ COMPLETE |
+| 6.2 Public Packages | ✅ COMPLETE |
+| 6.3 Public Application | ✅ **COMPLETE via the Story 7.3 endpoint** |
 
-**Story 6.3 is satisfied by Story 7.3, not by a second endpoint.** `POST /public/coaches/{slug}/
-applications` is the *same* public application surface the Blueprint lists under both 6.3 and 7.3.
-**Do NOT implement 6.3 as a separate duplicate implementation.** Epic 06 closes when 7.3 lands.
+**Story 6.3 has NO separate implementation and must never get one.**
+`POST /public/coaches/{slug}/applications` is the *same* public application surface the Blueprint
+lists under both 6.3 and 7.3. Building a second endpoint would duplicate the atomic transaction and
+split the contract.
 
-Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+**Epic 07 — Client Applications & OTP:** Stories 7.1, 7.2 and 7.3 are complete and merged.
+**Story 7.4 — Client Portal Authentication** has not started. Note that 7.4 overlaps
+**Story 2.8 (Client OTP)**, which was previously DEFERRED — confirm the relationship before starting
+either, rather than building OTP twice.
+
+**Epic 08 — Orders & Manual Payments:** Story 8.1 (Order Model) is complete. Stories 8.2–8.5
+(order creation, payment submission, payment proof access, order approval) have not started.
+
+**Next per the Blueprint:** either **Story 7.4** (finishing Epic 07) or **Story 8.2** (continuing
+Epic 08). **Not started — awaiting explicit direction.**
+
+**Carry-in for any Story touching orders:** `order_number` allocation now lives in
+`apps/applications/services.py` for the initial Order. **Story 8.2 (`POST /orders`) will need the
+same per-workspace, savepoint-wrapped, retrying allocation** — extract and reuse it rather than
+writing a second implementation.
+
+**Carry-in for any Story touching packages:** `Application.package` and `Order.package` are both
+`on_delete=PROTECT`, so `DELETE /packages/{id}` can now raise `ProtectedError`. **Whether that
+surfaces as `409 CONFLICT` remains UNDECIDED — ask, do not guess.**
+
+---
+
+## Completed — Story 7.3
+
+### Story 7.3 — Client Onboarding  (Epic 07 — Client Applications & OTP)
+
+**Status:** ✅ **COMPLETE** — **PR #32 merged as `8abe72d73fa7f69a8ccb9a869248fb60f981a2af`** on
+2026-08-25. Verified: `git merge-base --is-ancestor` confirms both the merge commit and the PR head
+`760bbb5c…` are contained in `origin/main`; the merged diff contained exactly the **five** intended
+files (+1450 / −2) and **zero** mobile files.
+
+**This Story also satisfies Story 6.3 (Public Application) and closes Epic 06.** It is the *same*
+public application surface. **Story 6.3 must NEVER be implemented as a second endpoint.**
+
+#### The complete atomic transaction
+
+`POST /api/v1/public/coaches/{slug}/applications` — Public, unauthenticated.
+
+The whole operation runs inside one `transaction.atomic()` in the new
+`backend/apps/applications/services.py`, following API §7's step order exactly:
+
+```text
+1. resolve Workspace from the URL slug
+2. validate the package belongs to that Workspace and is active
+3. create the Application (status SUBMITTED)
+4. find or create the global User and ClientProfile
+5. create Membership(role=CLIENT) for this Workspace if absent
+6. associate Application.user
+7. create the initial Order, amount and currency taken from the Package
+```
+
+**API §7's binding invariant:** *"a failure at any step must not leave an Application without its
+Order or an Order without its Application."*
+
+#### Atomicity — Application + Membership + Order
+
+A failure at the **final Order step** rolls back the `Application`, the `Membership`, and any
+`User`/`ClientProfile` created by that request. Tests assert `Application.objects.count() ==
+Order.objects.count()` after success, and **zero of everything** after a forced late failure.
+
+#### Reuse, not duplication
+
+- **`resolve_public_workspace`** (Stories 6.1/6.2) — an unknown slug and a `SUSPENDED` workspace
+  return the **same 404**, never 403.
+- **The Story 7.2 serializer** performs package validation, so a cross-workspace package remains
+  **indistinguishable** from a non-existent one. **No second check was added** that could
+  reintroduce enumeration.
+- **The Story 8.1 `Order`** is used as-is. **No schema change and no migration.**
+- Epic 03 tenant infrastructure was **not rebuilt**, and no global "current workspace" was
+  introduced.
+
+#### Security properties (each mutation-verified)
+
+| Property | Guarantee |
+|---|---|
+| Workspace source | **Only** the URL slug — never request data (API §25 rule 1) |
+| `Order.client` | The **Membership**, never `User`, never `ClientProfile` (DB §10) |
+| `Order.amount` / `currency` | From the **Package**, never the request — the frontend cannot choose the authoritative price |
+| Existing global `User` | **Reused untouched** — a Client User may already exist from another Workspace |
+| Existing `Membership` | **Reused without changing role or status** — an applicant who is already a COACH or OWNER is never silently demoted |
+| Package | Must belong to the resolved Workspace **and** be active |
+| Cross-tenant | No enumeration; no cross-workspace leakage |
+
+#### `order_number` allocation — Blueprint §2D decision 52
+
+Story 8.1 shipped only the field and the `UNIQUE(workspace, order_number)` constraint; **Story 7.3
+owns the allocation.**
+
+Per-workspace sequential, **zero-padded to six digits** (`000001`, `000002`, …), scoped to the
+workspace — **never a platform-wide counter**, which would leak cross-tenant order volume.
+Allocated **inside the transaction**, with **bounded retry on unique conflict**.
+
+**Each retry attempt runs inside its own savepoint.** This is not incidental: an `IntegrityError`
+raised inside the outer `atomic()` block **without** a savepoint marks the whole transaction broken
+and raises `TransactionManagementError` on the next statement, so a naive `try/except` around the
+insert silently cannot work.
+
+#### Decision — `public_application` throttle = `10/hour`
+
+**This is a PROJECT DECISION FILLING A DOCUMENTATION GAP, approved by the user on 2026-08-25.**
+
+**API §22 makes rate limiting mandatory for "Public application endpoints" but specifies NO numeric
+value**, and no other approved document defines one. **API §22 did not originally specify
+`10/hour`** — that number is this project's decision, not a pre-existing requirement.
+
+Implemented as a single new scope `public_application = "10/hour"` in `DEFAULT_THROTTLE_RATES`,
+applied with DRF's `ScopedRateThrottle`. No global throttling was introduced and no existing scope
+was changed. Recorded as **Blueprint §2D decision 53**.
+
+#### Decision — the 201 response body
+
+No approved document defines a response body or status code for this endpoint. Following the Story
+5.1 precedent for resource creation, it returns **201** with **exactly four keys**:
+`application_id`, `order_id`, `order_number`, `status`.
+
+**No applicant personal data, workspace id, package id or amount is echoed back** — this is an
+unauthenticated endpoint, so it returns only the minimum a caller needs to reference their
+submission. Test-locked.
+
+#### Mutation testing — 12 of 13 caught, 1 honestly reported as untestable
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | `transaction.atomic` removed | **caught** (2) |
+| M2 | Order creation skipped — Application without Order | **caught** (18 errors) |
+| M3 | Membership role `OWNER` instead of `CLIENT` | **caught** (1) |
+| M4 | `order_number` workspace scoping removed (global counter) | **caught** (1) |
+| M5 | zero-padding removed | **caught** (5) |
+| M6 | sequence increment broken (always `000001`) | **caught** (3 errors) |
+| M7 | retry-on-conflict removed | **caught** (1 error) |
+| M8 | per-attempt savepoint removed | **SURVIVED — NOT counted as caught** |
+| M9 | `amount` from a literal instead of the Package | **caught** (1) |
+| M10 | `currency` sourced incorrectly | **caught** (1) |
+| M11 | `Order.client` set to the User | **caught** (18 errors) |
+| M12 | package active check removed | **caught** (1) |
+| M13 | package workspace check removed | **caught** (2) |
+
+**M8 is recorded as SURVIVED, honestly and deliberately — it is NOT counted as caught.** The
+injected conflict raises `IntegrityError` from a **mock**, so the transaction is never *genuinely*
+marked broken by the database. A real unique violation during allocation arises only under true
+concurrency, which a **single-connection `TestCase` cannot stage**. The savepoint is defensive
+correctness for production concurrency that this harness cannot reproduce.
+
+**M8 is NOT an equivalent mutant** — removing the savepoint *would* break production under real
+concurrent submissions. It is **untestable with the current single-connection test setup**, which is
+a different and weaker claim than "equivalent", and is stated as such. Catching it would require a
+multi-connection `TransactionTestCase` with real threads.
+
+#### A REAL TEST DEFECT this Story found and fixed
+
+**The delivered atomicity test was VACUOUS.** It patched `type(order_model.objects).create`.
+
+**`Order` and `Application` share a single manager class** — `WorkspaceScopedModel` calls
+`TenantQuerySet.as_manager()` **once** in the abstract base, so every subclass inherits the same
+`ManagerFromTenantQuerySet` class. Patching the **class** therefore also stubbed
+`Application.objects.create`: **the Application was never created at all**, and the "everything
+rolled back" assertion was **trivially true**.
+
+This is exactly the failure mode of proving atomicity where nothing was ever written. It was
+confirmed **empirically** — a probe showed zero rows even with `transaction.atomic()` removed — then
+fixed by patching the manager **instance**, which affects `Order` alone so the `Application` really
+is written first.
+
+**M1 (atomic removed) only became detectable after this fix.** A second test was added covering the
+allocation **conflict-retry** path, which nothing previously exercised; **M7 only became detectable
+after that.**
+
+> **STANDING RULE, learned here:** when patching to inject a failure, patch the **manager instance**,
+> never `type(model.objects)` — every `WorkspaceScopedModel` subclass shares one manager class, so a
+> class-level patch silently affects unrelated models and can make a test pass vacuously.
+
+#### Verification — Master-run, real exit codes captured directly
+
+| Check | Exit |
+|---|---|
+| `manage.py check` | **0** |
+| `makemigrations --check --dry-run` | **0** — no changes |
+| Focused tests (`tests.test_client_onboarding`) | **29/29** |
+| Full Django suite on real PostgreSQL | **768/768** — Stories 7.1, 7.2 and 8.1 all green |
+| `checks.sh` | **0** — all 7 gates PASS |
+| `npm run build` | **0** |
+
+**CI evidence:** `Merge 760bbb5c3ed6… into 2d22fbec4e3b…` — the live PR head into the then-current
+`origin/main`.
+
+#### Delegation — a worker outage, disclosed
+
+**Codex hit its OpenAI usage limit mid-Story** (`"You've hit your usage limit… try again at
+11:59 PM"`) and produced **zero files**. Rather than retry a hard external block,
+**OpenCode / GLM-5.3 was substituted as the implementer**. This is **replacing a blocked worker, not
+manufacturing a third stream** — the two-stream structure (independent implementer ∥ blind test
+author) was preserved.
+
+**AGY remained genuinely blind**: a separate worktree branched from `origin/main`, no imports of
+`services.py` or the views, patches confined to the `Order` manager, no `TestCase` class-attribute
+binding trap, no line over 100 characters.
+
+**Master corrections, both disclosed above:** the vacuous-atomicity patch fix, and the added
+conflict-retry test.
+
+#### Track boundary — Mobile track untouched
+
+Backend/Web track only. **No file under `mobile/` or `docs/05-mobile/` was read, modified, deleted
+or committed.** The merged diff contains **zero** mobile files. Branched from `origin/main`, and
+tracking was published from an isolated worktree cut from `origin/main`, so none of the local
+unpublished Mobile commits was published, reset, stashed or cleaned.
 
 ---
 
