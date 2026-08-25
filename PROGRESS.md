@@ -29,9 +29,9 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | **Epic 06 — Public Coach Portal** (Stories 6.1 and 6.2 complete; 6.3 deferred) |
-| **Current Story** | Story 6.2 — Public Packages — **COMPLETE and merged** (2026-08-25) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. ✅ **Epic 05 COMPLETE (3/3)**. **Epic 06 — 2 of its 3 Blueprint Stories delivered (6.1, 6.2); Story 6.3 is BLOCKED on Epics 07/08 and lands with Epic 07, so Epic 06 is NOT marked COMPLETE** |
+| **Current Epic** | **Epic 07 — Client Applications & OTP** (Story 7.1 complete) |
+| **Current Story** | Story 7.1 — Application Model — **COMPLETE and merged** (2026-08-25) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. ✅ **Epic 05 COMPLETE (3/3)**. **Epic 06 — 2 of its 3 Blueprint Stories delivered (6.1, 6.2); Story 6.3 BLOCKED and lands with Epic 07, so Epic 06 is NOT marked COMPLETE**. **Epic 07 in progress — Story 7.1 complete**; 7.2 not started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-25 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -587,23 +587,214 @@ Documentation work completed to date (not implementation — recorded for contex
 
 ## In Progress
 
-**No Story currently in progress.** **Epic 06 — Public Coach Portal**: Stories 6.1 (Public Coach
-Page) and 6.2 (Public Packages) are both complete and merged. **The public read surface is done.**
+**No Story currently in progress.** **Epic 07 — Client Applications & OTP is the active Epic**;
+Story 7.1 (Application Model) is complete and merged. **Story 7.2 — Application Submission** is next
+and has not started.
 
-**Epic 06 is deliberately NOT marked COMPLETE.** The authoritative Blueprint still lists **Story 6.3
-— Public Application** under its Epic 06 section, and that Story is undelivered. It is **BLOCKED**,
-not skipped: it requires the `Application` model (Story **7.1**), the client-onboarding transaction
-(Story **7.3** — which specifies the *same* endpoint), and the `Order` model (Story **8.1**).
-**Story 6.3 therefore lands with Epic 07, and Epic 06 closes at that point.** Do not build
-`Application` or `Order` models ahead of their owning Epics, and do not re-scope Epic 06 to two
-Stories to make it look complete.
+**Epic 06 remains open.** Stories 6.1 and 6.2 are complete, but the Blueprint still lists **Story
+6.3 — Public Application** under Epic 06 and that Story is undelivered. It is **BLOCKED, not
+skipped**: it needs the `Application` model (Story 7.1 — now DONE), the client-onboarding
+transaction (Story **7.3**, which specifies the *same* endpoint), and the `Order` model (Story
+**8.1**). **Story 6.3 therefore lands with Epic 07/08, and Epic 06 closes at that point.** Do not
+re-scope Epic 06 to two Stories to make it look complete.
 
-**Next per Blueprint §29 order:** **Epic 07 — Client Applications & OTP**, starting with **Story 7.1
-— Application Model** (create the `applications` Django app and the workspace-scoped `Application`
-model, `user_id` nullable). Carry-in: a new externally exposed `WorkspaceScopedModel` subclass
-**must declare its own explicit UUID primary key** — `WorkspaceScopedModel` does not provide one.
+**Carry-in for Story 7.2 and beyond:** `Application.package` is `on_delete=PROTECT`, so deleting a
+package that has applications now raises `ProtectedError`. The coach-facing `DELETE /packages/{id}`
+endpoint does not yet handle that. **Whether it surfaces as `409 CONFLICT` is UNDECIDED — stop and
+ask rather than guessing** when a Story actually touches that endpoint. Also note `blank` on the
+model flows straight into the Story 7.2 submission serializer, so the required/optional split is
+already pinned by a test.
 
 Story 2.8 (Client OTP) and the `/auth/me` Role field remain unblocked but each needs its own Story.
+
+---
+
+## Completed — Story 7.1
+
+### Story 7.1 — Application Model  (Epic 07 — Client Applications & OTP)
+
+**Status:** ✅ **COMPLETE** — **PR #26 merged as `d9601ee3682339af00f940947b414b957c83b51a`** on
+2026-08-25. Verified: `git merge-base --is-ancestor` confirms both the merge commit and the PR head
+`40f8b43c…` are contained in `origin/main`, and the merged diff contained exactly the **three**
+intended files (+781).
+
+**This is the first Story of Epic 07 and the first new model since Epic 05.** It is **model only** —
+no views, serializers, URLs or endpoints, which belong to Stories 7.2 (Application Submission) and
+7.3 (Client Onboarding).
+
+#### The model — exactly the 17 documented fields
+
+DB Architecture **§11A** and ERD **§6** give an **identical** field list. It is implemented exactly,
+with **no invented fields**:
+
+```text
+id, workspace, package, user (NULLABLE), status,
+full_name, email, phone, age, gender, height, weight,
+goal, training_experience, notes, created_at, updated_at
+```
+
+A whole-field-set equality test guards this, so any later addition (`reviewed_at`,
+`rejection_reason`, `is_active`, `source`, …) or omission fails loudly.
+
+#### UUID primary key — the Story 4.4 defect class
+
+**The model declares an explicit UUID primary key.** This is not cosmetic:
+`WorkspaceScopedModel` supplies the `workspace` FK and the `TenantQuerySet` manager but
+**does NOT supply a primary key**. A concrete subclass that omits one silently receives a
+`BigAutoField`, violating API §25 rule 13 ("Use UUIDs for externally exposed resource
+identifiers"). **This exact defect already occurred in Story 4.4 (`PaymentMethod`).**
+
+The generated migration was read and confirmed to declare
+`models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)`, and a
+test asserts `_meta.pk` is a `UUIDField` and that saved instances receive distinct `uuid.UUID`
+values. **Mutation M1 removes the pk declaration and is caught.**
+
+**Standing rule reconfirmed:** every new externally exposed `WorkspaceScopedModel` subclass must
+declare its own explicit UUID primary key.
+
+#### Nullable `user`, status enum, scoping
+
+- **`user` is NULLABLE and this is mandatory** (DB §11A): "a public application may originate from
+  an anonymous visitor, so an authenticated User is not required at application creation time."
+  Declared via `settings.AUTH_USER_MODEL` with `on_delete=SET_NULL`.
+- **`status` is exactly `SUBMITTED` / `REVIEWING` / `APPROVED` / `REJECTED`**, defaulting to
+  `SUBMITTED`. No fifth value was invented, and **no transition enforcement was added** — no
+  approved document defines a state machine at this layer, so asserting one would invent behaviour.
+- **Workspace-scoped**, with `Application.objects.for_workspace(ws)` isolation asserted across two
+  workspaces by strict id-set comparison. Epic 03 tenant infrastructure is **reused, not rebuilt**.
+- **Migration `0001_initial`** creates one table. `makemigrations --check --dry-run` reports no
+  further changes.
+
+#### Decision 1 — field types and nullability (undocumented, locked by test)
+
+No approved document specifies field *types* or which fields are optional. The decision follows the
+**approved Story 2.3 `ClientProfile` precedent** — the same intake data, captured from the same
+person:
+
+| | Fields |
+|---|---|
+| **Required** | `full_name`, `email` (plus `workspace`, `package`, `status`) |
+| **Optional** | `phone`, `age`, `gender`, `height`, `weight`, `goal`, `training_experience`, `notes` |
+
+`gender` is a plain `CharField` with **NO choices**, matching that same approved Story 2.3 decision.
+`height` / `weight` are `DecimalField(max_digits=5, decimal_places=2)` and are asserted to
+round-trip precisely.
+
+A test asserts the required/optional split explicitly — see the M8 note below for why that test
+exists.
+
+#### Decision 2 — `package` uses `on_delete=PROTECT`, not `CASCADE`
+
+**No approved document states an `on_delete` for `Application.package`.** AGY, working blind,
+independently asserted `CASCADE`; Master's brief had specified `PROTECT`. The disagreement was
+settled on documentary evidence rather than preference:
+
+- **Story 5.1 made `DELETE /packages/{id}` a HARD delete** (explicit user decision: no
+  `archived_at`, no `deleted_at`, no reuse of `is_active` as a deletion mechanism).
+- **API §8 says: "Prefer soft deletion/archive when the package has historical orders."** The
+  approved specs therefore already treat *destroying a package that has downstream history* as the
+  thing to avoid.
+- **DB §11A calls the Application a first-class Workspace-scoped business record**, belonging to a
+  real person who applied.
+
+Under `CASCADE`, a single hard package delete would **silently erase Application rows**. `PROTECT`
+refuses the delete instead of destroying applicant history. AGY's `CASCADE` assertion was corrected
+to `PROTECT`, with the reasoning recorded in the test docstring.
+
+**Behavioural consequences, both asserted by tests:**
+
+1. **Deleting a package that has applications raises `ProtectedError`** and the package still
+   exists afterwards.
+2. **A package with NO applications remains deletable** — `PROTECT` does not regress Story 5.1's
+   hard-delete behaviour. The full suite (693 tests) confirms no existing package-delete test broke.
+
+**Note for Story 7.2 / 7.3 and Epic 08:** once applications exist in production data, the coach-facing
+`DELETE /packages/{id}` endpoint can now raise `ProtectedError`. No endpoint currently handles that,
+because Story 7.1 is model-only. **Whether that surfaces as a `409 CONFLICT` is undecided and must
+not be guessed** — it needs an explicit decision when a Story actually touches that endpoint.
+
+#### Mutation testing — 8 of 8 caught
+
+Each mutation was proven to **apply** and to pass **`manage.py check`** before being counted. The
+harness records a failure at either stage as **"did not apply" / "did not execute"** and **never**
+as caught — a non-zero exit alone is not evidence. All restored from the **git** baseline with
+byte-identical verification.
+
+| # | Mutation | Failures |
+|---|---|---|
+| M1 | explicit UUID pk removed → `BigAutoField` | 1 + 18 errors |
+| M2 | `user` made NOT NULL — anonymous applications impossible | 1 + 2 errors |
+| M3 | fifth undocumented status value (`PENDING`) added | 1 |
+| M4 | status default flipped off `SUBMITTED` | 1 |
+| M5 | `package` `PROTECT` → `CASCADE` — applicant history destroyed | 2 |
+| M6 | undocumented field added (`reviewed_at`) | 1 + 19 errors |
+| M7 | `gender` given choices — contradicts Story 2.3 | 1 |
+| M8 | `full_name` made optional | 1 |
+
+**M2 — initially NOT EXECUTED, and correctly not counted as caught.** The first form removed
+`null=True` while leaving `on_delete=SET_NULL`, producing a model Django itself rejects
+(`fields.E320: Field specifies on_delete=SET_NULL, but cannot be null`). The mutated code therefore
+never ran. It was recorded as **"did not execute"**, the cause was diagnosed, and it was re-run in a
+valid form (`SET_NULL` → `CASCADE` alongside dropping `null=True`), where it is genuinely caught.
+**A mutation must be a valid program before its result means anything.**
+
+**M8 — initially SURVIVED, and it was a real test gap, not an equivalent mutant.** Making
+`full_name` optional via `blank=True` has **no ORM effect**, so it was invisible to behavioural
+model tests. It is not harmless: **Story 7.2's submission serializer will inherit `blank` directly
+from the model**, so a required field could silently become optional between Stories. The survival
+was investigated rather than dismissed, and a test was added asserting the required/optional split
+explicitly — which is also what locks Decision 1 above. M8 is now caught.
+
+#### Verification — Master-run, real exit codes captured directly
+
+| Check | Exit |
+|---|---|
+| `manage.py check` | **0** |
+| `makemigrations --check --dry-run` | **0** — no changes detected |
+| Focused tests (`tests.test_application_model`) | **28/28** |
+| Full Django suite on real PostgreSQL | **693/693** |
+| `checks.sh` | **0** — all 7 gates PASS |
+| `npm run build` | **0** |
+
+**CI evidence.** The run log reads `Merge 40f8b43c10a6… into 9a5b56ab3f19…` — the live PR head into
+the then-current `origin/main`.
+
+#### Delegation and AGY independence
+
+Codex (model + generated migration) ∥ AGY (25 tests, `test_application_model.py`) on disjoint files;
+**GLM-5.3 correctly idle** — no genuinely disjoint third task existed and none was manufactured.
+
+**Codex needed ZERO corrections.** It declared the explicit UUID pk, the nullable `user`, the exact
+four-value status enum, and no extra fields.
+
+**AGY authored the tests INDEPENDENTLY.** It worked in a separate worktree branched from
+`origin/main`, where the model does not exist, and its brief stated the tests were expected to fail
+there. It never saw Codex's diff. Independence was verified **mechanically, not assumed**: the
+delivered file imports nothing from any app's views or serializers, calls no view or module helper,
+mocks nothing, contains no HTTP/API tests, and has no line over 100 characters.
+
+**The recurring Python `TestCase` class-attribute trap was pre-briefed** (never assign a bare
+function to a `TestCase` class attribute without `staticmethod()`, or it silently binds and receives
+the wrong first argument). A mechanical grep confirmed the delivered file contains no such
+assignment.
+
+**Master corrections to AGY's file were two, both disclosed:** the `CASCADE` → `PROTECT` assertion
+described above (with two new behavioural tests), and the added required/optional assertion prompted
+by M8. `ruff format` was applied. No other test logic was altered.
+
+#### Track boundary — Mobile track untouched
+
+Backend/Web track only. **No file under `mobile/` or `docs/05-mobile/` was read, modified, deleted
+or committed.** The worktrees were branched from **`origin/main`**, not local `main`, so no
+Mobile-track commit was ever in the base or the PR.
+
+At tracking time local `main` carried **three unpublished Mobile-track commits** (`6aac13e`,
+`1e7c1df`, `fbe0c7b`). They were left untouched: `origin/main` was merged into local `main` with a
+merge commit containing **zero** mobile files, and the tracking commit was published by
+cherry-picking it onto a branch cut from `origin/main` — so no Mobile-track commit was published by
+this track.
+
+**Next:** **Story 7.2 — Application Submission** — not started.
 
 ---
 
