@@ -2,7 +2,7 @@
 
 from django.urls import path
 
-from .public_views import PublicCoachView
+from .public_views import PublicCoachView, PublicPackagesView
 from .views import (
     PaymentMethodDetailView,
     PaymentMethodView,
@@ -14,6 +14,9 @@ from .views import (
 urlpatterns = [
     path("workspace", WorkspaceCreateView.as_view(), name="workspace-create"),
     path("public/coaches/<slug:slug>", PublicCoachView.as_view(), name="public-coach"),
+    path(
+        "public/coaches/<slug:slug>/packages", PublicPackagesView.as_view(), name="public-packages"
+    ),
     path("workspace/branding", WorkspaceBrandingView.as_view(), name="workspace-branding"),
     path("workspace/logo", WorkspaceLogoUploadView.as_view(), name="workspace-logo"),
     path("workspace/payment-methods", PaymentMethodView.as_view(), name="payment-method-list"),
