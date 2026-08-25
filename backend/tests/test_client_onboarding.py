@@ -941,6 +941,45 @@ class ClientOnboardingOrderNumberPerWorkspaceTests(BaseClientOnboardingTestCase)
 class ClientOnboardingOrderNumberUniquenessTests(BaseClientOnboardingTestCase):
     """Verifies the UNIQUE(workspace, order_number) database constraint (Point 19)."""
 
+    def test_order_number_conflict_is_retried_and_submission_still_succeeds(self):
+        """Guards decision 52's concurrency requirement: allocation retries on conflict.
+
+        Two simultaneous submissions in one workspace can compute the same order_number; the
+        loser hits UNIQUE(workspace, order_number). The contract requires the allocation to
+        recompute and retry rather than fail the request. A real thread race cannot be staged
+        in a single-connection TestCase, so the conflict is injected by making the FIRST
+        Order insert raise IntegrityError and letting the retry run the real create.
+
+        This also proves the retry is savepoint-wrapped: without a savepoint the IntegrityError
+        would leave the outer atomic block broken and the retry's next query would raise
+        TransactionManagementError instead of succeeding.
+        """
+        workspace = self._create_workspace()
+        package = self._create_package(workspace=workspace)
+        url = public_applications_url(workspace.slug)
+
+        real_create = self.order_model.objects.create
+        calls = {"n": 0}
+
+        def flaky_create(*args, **kwargs):
+            """Raise a unique-violation on the first attempt, then behave normally."""
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise IntegrityError("duplicate key value violates unique constraint")
+            return real_create(*args, **kwargs)
+
+        with patch.object(self.order_model.objects, "create", side_effect=flaky_create):
+            response = self.client.post(url, self._build_valid_payload(package), format="json")
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+            "A retried order-number conflict must still produce a successful submission.",
+        )
+        self.assertGreaterEqual(calls["n"], 2, "The allocation must have retried after conflict.")
+        self.assertEqual(self.order_model.objects.filter(workspace=workspace).count(), 1)
+        self.assertEqual(self.application_model.objects.filter(workspace=workspace).count(), 1)
+
     def test_duplicate_order_number_in_same_workspace_violates_integrity_constraint(self):
         """Asserts inserting duplicate order_number in same workspace raises IntegrityError."""
         workspace = self._create_workspace()
@@ -1006,8 +1045,14 @@ class ClientOnboardingAtomicityTests(BaseClientOnboardingTestCase):
         client_profile_count_before = self.client_profile_model.objects.count()
 
         # Patch Order manager's create method to simulate a late database failure
+        # Patch the manager INSTANCE, not type(...). Order and Application share one
+        # manager class (WorkspaceScopedModel calls TenantQuerySet.as_manager() once in the
+        # abstract base), so patching the class would also stub Application.objects.create —
+        # the Application would never be created and "it rolled back" would be vacuously
+        # true. Patching the instance affects Order alone, so the Application really is
+        # written first and the rollback assertion below is meaningful.
         with patch.object(
-            type(self.order_model.objects),
+            self.order_model.objects,
             "create",
             side_effect=RuntimeError("Simulated database failure during Order creation"),
         ):
@@ -1098,8 +1143,14 @@ class ClientOnboardingApplicationOrderCoexistenceTests(BaseClientOnboardingTestC
         )
 
         # Late failure attempt must not leave an orphaned Application
+        # Patch the manager INSTANCE, not type(...). Order and Application share one
+        # manager class (WorkspaceScopedModel calls TenantQuerySet.as_manager() once in the
+        # abstract base), so patching the class would also stub Application.objects.create —
+        # the Application would never be created and "it rolled back" would be vacuously
+        # true. Patching the instance affects Order alone, so the Application really is
+        # written first and the rollback assertion below is meaningful.
         with patch.object(
-            type(self.order_model.objects),
+            self.order_model.objects,
             "create",
             side_effect=RuntimeError("Order creation failure"),
         ):
