@@ -490,6 +490,31 @@ class ClientOtpRequestAntiEnumerationTests(BaseClientOtpApiTestCase):
 class ClientOtpStorageSecurityAndExpiryTests(BaseClientOtpApiTestCase):
     """Verifies raw OTP non-storage, code_hash, and 10-minute expiry (Points 5, 6, 7)."""
 
+    def test_requesting_a_new_code_marks_every_earlier_code_used_in_the_database(self):
+        """Locks the documented invalidation at the DB level, not just via the endpoint.
+
+        Decision: "previous OTPs are invalidated when a new OTP is requested", so two
+        usable codes must never coexist. Verifying only through the API cannot prove this,
+        because the verify view reads the LATEST row — an old code would fail to
+        authenticate even if it were still marked usable, masking a missing invalidation.
+        Asserting the stored rows directly is what makes the requirement enforceable.
+        """
+        workspace, client_user, _ = self._setup_eligible_client()
+
+        self._request_otp(client_user.email, workspace.slug)
+        self._request_otp(client_user.email, workspace.slug)
+
+        rows = self.login_otp_model.objects.filter(user=client_user).order_by("created_at")
+        self.assertEqual(rows.count(), 2, "Each request must create its own OTP row.")
+        self.assertIsNotNone(
+            rows[0].used_at,
+            "The earlier OTP must be invalidated when a new one is issued.",
+        )
+        self.assertIsNone(rows[1].used_at, "The newest OTP must remain usable.")
+
+        usable = self.login_otp_model.objects.filter(user=client_user, used_at__isnull=True).count()
+        self.assertEqual(usable, 1, "Exactly one usable OTP may exist for a user at a time.")
+
     def test_raw_otp_code_is_never_stored_in_any_field_of_login_otp_row(self):
         """Asserts raw OTP is absent from all fields of LoginOTP row (Point 5).
 
