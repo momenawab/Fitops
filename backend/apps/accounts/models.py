@@ -147,3 +147,20 @@ class Membership(models.Model):
 
     def __str__(self):
         return f"{self.user} @ {self.workspace}"
+
+
+class LoginOTP(models.Model):
+    """A hashed one-time login code issued to a client's email."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="login_otps",
+        on_delete=models.CASCADE,
+    )
+    email = models.EmailField()
+    code_hash = models.CharField(max_length=128)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveIntegerField(default=0)
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)

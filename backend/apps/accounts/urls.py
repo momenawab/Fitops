@@ -4,6 +4,8 @@ from django.urls import path
 
 from .views import (
     AuthMeView,
+    ClientOTPRequestView,
+    ClientOTPVerifyView,
     CoachLoginView,
     CoachRegistrationView,
     EmailVerificationResendView,
@@ -30,4 +32,6 @@ urlpatterns = [
     path("auth/2fa/confirm", TwoFactorConfirmView.as_view(), name="two-factor-confirm"),
     path("auth/2fa/verify", TwoFactorVerifyView.as_view(), name="two-factor-verify"),
     path("auth/2fa/disable", TwoFactorDisableView.as_view(), name="two-factor-disable"),
+    path("auth/client/request-code", ClientOTPRequestView.as_view(), name="client-otp-request"),
+    path("auth/client/verify-code", ClientOTPVerifyView.as_view(), name="client-otp-verify"),
 ]

@@ -752,6 +752,7 @@ class PasswordResetRegressionAndArchitectureGuardTests(BasePasswordResetTestCase
             "ClientProfile",
             "CoachSecurity",
             "Membership",
+            "LoginOTP",
         }
         self.assertSetEqual(
             concrete_model_names,

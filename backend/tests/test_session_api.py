@@ -262,5 +262,5 @@ class AccountsArchitectureGuardTests(TestCase):
         names = {m.__name__ for m in apps.get_app_config("accounts").get_models()}
         self.assertEqual(
             names,
-            {"User", "CoachProfile", "ClientProfile", "CoachSecurity", "Membership"},
+            {"User", "CoachProfile", "ClientProfile", "CoachSecurity", "Membership", "LoginOTP"},
         )

@@ -61,6 +61,19 @@ class CoachLoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
 
+class ClientOTPRequestSerializer(serializers.Serializer):
+    """Validate a client OTP request."""
+
+    email = serializers.EmailField()
+    workspace_slug = serializers.SlugField()
+
+
+class ClientOTPVerifySerializer(ClientOTPRequestSerializer):
+    """Validate a client OTP verification request."""
+
+    code = serializers.CharField(min_length=6, max_length=6)
+
+
 class TwoFactorCodeSerializer(serializers.Serializer):
     """Validate a time-based one-time password submission."""
 

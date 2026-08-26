@@ -439,11 +439,12 @@ class WorkspaceScopedModelContractTests(BaseTenantQueryInfrastructureTestCase):
             "ClientProfile",
             "CoachSecurity",
             "Membership",
+            "LoginOTP",
         }
         self.assertSetEqual(
             concrete_accounts_models,
             expected_accounts_models,
-            "accounts app must expose exactly the 5 approved models.",
+            "accounts app must expose exactly the 6 approved models.",
         )
 
     def test_workspace_scoped_model_has_no_standalone_database_table(self):
