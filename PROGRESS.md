@@ -29,9 +29,9 @@
 | Field | Value |
 |---|---|
 | **Current phase** | Implementation |
-| **Current Epic** | **Epic 07 — Client Applications & OTP** (7.1, 7.2, 7.3 complete; 7.4 not started). ✅ **Epic 06 COMPLETE** |
-| **Current Story** | Story 7.3 — Client Onboarding — **COMPLETE and merged** (2026-08-25) |
-| **Overall status** | ✅ Epic 01 COMPLETE (8/8). Epic 02 complete except DEFERRED Story 2.8. ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. ✅ **Epic 05 COMPLETE (3/3)**. ✅ **Epic 06 COMPLETE (3/3)** — 6.1, 6.2, and **6.3 satisfied by the Story 7.3 endpoint** (the same public application surface; never duplicated). **Epic 07 in progress — Story 7.1 complete**; 7.2 not started |
+| **Current Epic** | ✅ **Epic 07 — Client Applications & OTP COMPLETE (4/4)**. ✅ Epic 06 COMPLETE |
+| **Current Story** | Story 2.8 — Client OTP — **COMPLETE and merged** (2026-08-25) |
+| **Overall status** | ✅ Epic 01 COMPLETE (8/8). ✅ **Epic 02 COMPLETE** — Story 2.8 (Client OTP) is now delivered. ✅ **Epic 03 COMPLETE (5/5)**. ✅ **Epic 04 COMPLETE (4/4)**. ✅ **Epic 05 COMPLETE (3/3)**. ✅ **Epic 06 COMPLETE (3/3)** — 6.1, 6.2, and **6.3 satisfied by the Story 7.3 endpoint** (the same public application surface; never duplicated). **Epic 07 in progress — Story 7.1 complete**; 7.2 not started |
 | **Execution model** | Delegated. Claude = Master; workers = Codex / AGY / OpenCode via `delegate-skills` |
 | **Last updated** | 2026-08-25 |
 | **Current AI/agent** | Claude Opus 5 (Claude Code session) |
@@ -589,38 +589,295 @@ Documentation work completed to date (not implementation — recorded for contex
 
 **No Story currently in progress.**
 
-✅ **EPIC 06 — Public Coach Portal is COMPLETE (3/3).**
+✅ **EPIC 07 — Client Applications & OTP is COMPLETE (4/4).** Verified against the authoritative
+Blueprint, which defines **exactly four** Epic 07 Stories:
 
 | Story | Status |
 |---|---|
-| 6.1 Public Coach Page | ✅ COMPLETE |
-| 6.2 Public Packages | ✅ COMPLETE |
-| 6.3 Public Application | ✅ **COMPLETE via the Story 7.3 endpoint** |
+| 7.1 Application Model | ✅ COMPLETE |
+| 7.2 Application Submission | ✅ COMPLETE |
+| 7.3 Client Onboarding | ✅ COMPLETE |
+| 7.4 Client Portal Authentication | ✅ **COMPLETE — via Story 2.8** |
 
-**Story 6.3 has NO separate implementation and must never get one.**
-`POST /public/coaches/{slug}/applications` is the *same* public application surface the Blueprint
-lists under both 6.3 and 7.3. Building a second endpoint would duplicate the atomic transaction and
-split the contract.
+✅ **EPIC 06 — Public Coach Portal is COMPLETE (3/3)**: 6.1, 6.2, and 6.3 **via the Story 7.3
+endpoint**.
 
-**Epic 07 — Client Applications & OTP:** Stories 7.1, 7.2 and 7.3 are complete and merged.
-**Story 7.4 — Client Portal Authentication** has not started. Note that 7.4 overlaps
-**Story 2.8 (Client OTP)**, which was previously DEFERRED — confirm the relationship before starting
-either, rather than building OTP twice.
+✅ **EPIC 02 is now COMPLETE** — Story 2.8, its last outstanding Story, is delivered.
 
-**Epic 08 — Orders & Manual Payments:** Story 8.1 (Order Model) is complete. Stories 8.2–8.5
-(order creation, payment submission, payment proof access, order approval) have not started.
+**Two consolidations are in force, and neither may ever be duplicated:**
 
-**Next per the Blueprint:** either **Story 7.4** (finishing Epic 07) or **Story 8.2** (continuing
-Epic 08). **Not started — awaiting explicit direction.**
+- **Story 6.3 → satisfied by Story 7.3.** Same public application surface.
+- **Story 7.4 → satisfied by Story 2.8.** Same client OTP endpoint pair. API §5 defines only two
+  client authentication endpoints and Story 2.8 owns them along with Decisions 44–49.
 
-**Carry-in for any Story touching orders:** `order_number` allocation now lives in
-`apps/applications/services.py` for the initial Order. **Story 8.2 (`POST /orders`) will need the
-same per-workspace, savepoint-wrapped, retrying allocation** — extract and reuse it rather than
-writing a second implementation.
+**Do NOT create a second implementation for either.**
+
+**Epic 08 — Orders & Manual Payments:** Story 8.1 (Order Model) is complete. **Stories 8.2–8.5
+(order creation, payment submission, payment proof access, order approval) have not started.**
+**Story 8.2 is the next candidate — not started, awaiting explicit direction.**
+
+**Carry-in for Story 8.2:** `order_number` allocation already exists in
+`apps/applications/services.py` for the initial Order — per-workspace, zero-padded, savepoint-wrapped
+with retry. **`POST /orders` needs the same allocation; extract and reuse it rather than writing a
+second implementation.**
 
 **Carry-in for any Story touching packages:** `Application.package` and `Order.package` are both
-`on_delete=PROTECT`, so `DELETE /packages/{id}` can now raise `ProtectedError`. **Whether that
-surfaces as `409 CONFLICT` remains UNDECIDED — ask, do not guess.**
+`on_delete=PROTECT`, so `DELETE /packages/{id}` can raise `ProtectedError`. **Whether that surfaces
+as `409 CONFLICT` remains UNDECIDED — ask, do not guess.**
+
+**Carry-in for any Story touching client auth:** `LoginOTP` is deliberately **not** workspace-bound
+(the ERD forbids the FK). **Do not add a workspace FK or a workspace-bound OTP without a new
+explicit decision.**
+
+---
+
+## Completed — Story 2.8
+
+### Story 2.8 — Client OTP  (Epic 02 — Authentication & Identity)
+
+**Status:** ✅ **COMPLETE** — **PR #34 merged as `446d0113d5ffbd2565d6f7c045ba74196b3ca09c`** on
+2026-08-25. Verified independently: PR state `MERGED`, `git merge-base --is-ancestor` confirms both
+the merge commit and the PR head `882e3f47…` are contained in `origin/main`, the merged diff was
+exactly the **17** intended files (+1668 / −3), and **zero** mobile files entered the merge.
+
+**Previously DEFERRED (2026-08-17) because it required Epic 03 `Workspace` + `Membership`.** That
+dependency is fully discharged: Epic 03 is complete, and Story 7.3 now creates the
+`Membership(role=CLIENT)` records this flow authenticates.
+
+**This Story is the SINGLE CANONICAL OWNER of Client Portal Authentication.** See the Story 7.4
+consolidation note below.
+
+#### Endpoints — API §5
+
+```text
+POST /auth/client/request-code   {email, workspace_slug}
+POST /auth/client/verify-code    {email, workspace_slug, code}
+```
+
+#### `LoginOTP` schema
+
+Exactly the documented fields, with no additions:
+
+```text
+id, user, email, code_hash, expires_at, attempts, used_at, created_at
+```
+
+- **Explicit UUID primary key**, consistent with the project's external-id rule.
+- **`user` is NON-NULL** — approved **decision 49**.
+- **NO workspace FK.** The ERD establishes `LoginOTP` hangs off `User` only. See the
+  cross-workspace reasoning below.
+
+#### Approved decisions 44–49 — implemented unchanged, none reopened
+
+| # | Decision | Implementation |
+|---|---|---|
+| 44 | Request rate limit — **3/hour per email** *and* **10/hour per IP** | Both applied |
+| 45 | Verify rate limit — **10/hour** | Applied |
+| 46 | Maximum verification attempts — **5** | Enforced |
+| 47 | OTP expiry — **exactly 10 minutes** | Enforced |
+| 48 | Exhaustion → **`OTP_RATE_LIMITED`**, HTTP **429** | No `OTP_ATTEMPTS_EXCEEDED` invented |
+| 49 | `LoginOTP.user_id` **non-null** | Enforced |
+
+DRF's `ScopedRateThrottle` keys on IP, so **decision 44's per-email limit required a small
+`SimpleRateThrottle` subclass keyed on the normalized email**, kept in `accounts` rather than
+`common/`. No global throttling was introduced and no existing scope was changed.
+
+#### OTP hashing, expiry, attempts
+
+- The code is generated with **`secrets`** (never `random`), hashed with
+  **`make_password`**, and **never persisted or logged** — only `code_hash` is stored.
+- Verification uses **`check_password`**, which is **constant-time**. No hand-rolled comparison.
+- Expiry is **exactly 10 minutes** from creation.
+- A wrong code **increments `attempts`**, and **the increment is committed before the error is
+  raised** — so exhaustion cannot be evaded by retrying and rolling back the counter.
+- At **5** attempts the OTP is exhausted → `OTP_RATE_LIMITED` / **429**.
+
+#### Previous-OTP invalidation — one usable OTP per user
+
+Issuing a new code marks **all of that user's usable codes** used **in the same transaction**, under
+a `select_for_update` row lock, so **two valid codes can never coexist**. A test asserts this **at
+the database level**: the earlier row's `used_at` is set and **exactly one** usable OTP exists per
+user. (See the M5 note — an endpoint-only test could not prove this.)
+
+#### Anti-enumeration on `request-code`
+
+API §5: *"Always return a generic success response whether or not the account exists."*
+
+**Every one of these returns a byte-identical response**, and only the genuinely eligible case
+creates and sends a code:
+
+- the email has no `User`
+- the `User` exists but has no `Membership` in that workspace
+- the `Membership` is **INACTIVE**
+- the `Membership` role is **not CLIENT**
+- the `workspace_slug` does not exist
+- the workspace is **SUSPENDED**
+- the happy path
+
+Tests assert **`response.content` byte equality** across all of them, not merely matching status
+codes.
+
+#### Workspace resolution and Membership requirement
+
+- **`workspace_slug` is supplied by the client; the Workspace is resolved SERVER-SIDE.** A
+  client-supplied workspace id or object is never trusted as authorization context (API §25 rule 1).
+- **No global "current workspace"** was introduced, and Epic 03 tenant infrastructure was reused
+  rather than rebuilt.
+- **Verification requires an ACTIVE `Membership(role=CLIENT)` in the requested Workspace.** No
+  membership, an INACTIVE membership, a non-CLIENT role, or membership only in another workspace all
+  fail.
+
+#### Session — Django only
+
+On success the OTP is **consumed** (`used_at` set, so it can never be reused) and the session is
+created with **`django.contrib.auth.login`** — the existing **Story 2.9** mechanism.
+
+**No JWT. No `ClientSession`. No second session model. No session listing.** A test asserts the
+`accounts` app exposes exactly six models and that `/auth/sessions` and the revoke route remain
+**404** (out of Phase 1 scope). **No OTP data appears in any response** — no code, hash, attempts,
+expiry or remaining-attempts hint.
+
+#### Cross-workspace OTP reasoning — intentional, not a defect
+
+**`LoginOTP` is deliberately NOT workspace-bound**, because the approved ERD/schema explicitly
+forbids that FK.
+
+The OTP proves **possession of the email address**. Workspace authorization is an **independent**
+check against an ACTIVE `Membership(role=CLIENT)` in the **requested** workspace. Consequently a
+user who is an active client of **both** workspace A and workspace B may use a code requested at A's
+portal to authenticate into B — **no authorization boundary is crossed**, since they could simply
+have requested a code from B's own portal.
+
+The invariant that actually protects tenants, and which is tested, is: **a valid code cannot
+authenticate a user into a workspace they are not an ACTIVE CLIENT of.**
+
+**Binding note:** do **not** introduce a workspace FK or a workspace-bound OTP without a **new
+explicit decision**.
+
+#### Mutation testing — 17 of 17 caught
+
+Every mutation was proven to **apply** and to pass **`manage.py check`** before being counted; the
+harness records a failure at either stage as "did not apply" / "did not execute" and **never** as
+caught. All restored from the **git** baseline, byte-identical.
+
+| # | Mutation | Failures |
+|---|---|---|
+| M1 | raw OTP persisted instead of the hash | 7 |
+| M2 | hash verification bypassed (always matches) | 4 |
+| M3 | expiry extended far beyond 10 minutes | 1 |
+| M4 | max attempts raised from 5 | 2 |
+| M5 | previous-OTP invalidation removed | 1 |
+| M6 | predictable OTP generation (fixed code) | 3 |
+| M7 | per-email throttle key disabled | 1 |
+| M8 | expiry check removed at verify | 1 |
+| M9 | `used_at` check removed (used OTP reusable) | 1 |
+| M10 | attempts ceiling check removed | 1 |
+| M11 | attempt increment removed | 3 |
+| M12 | OTP consumption removed (`used_at` never set) | 1 |
+| M13 | Membership ACTIVE check removed | 1 |
+| M14 | Membership CLIENT-role check removed | 2 |
+| M15 | workspace membership check removed at verify | 1 |
+| **M16** | **anti-enumeration broken** | **8** |
+| M17 | session creation removed on success | 1 |
+
+**Two required investigation rather than acceptance:**
+
+- **M12 first reported "DID NOT EXECUTE".** Removing the consume block left an empty `else:`, a
+  syntax error, so the mutant never ran. It was **not counted as caught**, the cause was diagnosed,
+  and it was re-run in a valid form (`pass`) where it is genuinely caught.
+- **M5 first SURVIVED.** The verify view reads only the **latest** OTP
+  (`order_by("-created_at").first()`), so a missing invalidation is invisible through the API even
+  though stale usable rows remain in the database. Rather than accept it, a **database-level** test
+  was added asserting the earlier row's `used_at` is set and exactly one usable OTP exists per user.
+  M5 is caught after that.
+
+#### AGY independence and three corrected AGY test issues
+
+Codex (implementation) ∥ AGY (43 blind tests) on disjoint files; **GLM-5.3 correctly idle** — Codex's
+usage limit was **probed first** and had recovered, so no substitute was needed and no third stream
+was manufactured. **Codex needed zero corrections.**
+
+**AGY authored the tests INDEPENDENTLY** in a separate worktree branched from `origin/main` where
+none of the implementation exists. Verified **mechanically**: no imports of `apps.accounts.otp`,
+`views` or `serializers`; no view/service helper calls; **no mocks at all** — it reads the code from
+`django.core.mail.outbox` and ages rows via the ORM; no `TestCase` class-attribute binding trap; no
+line over 100 characters.
+
+**Three AGY test defects were corrected. The implementation was correct in all three:**
+
+1. **`unknown_workspace_slug` anti-enumeration scenario** asserted an **absolute zero** OTP count on
+   an email whose row the **happy-path baseline earlier in the same test** had legitimately created.
+   Changed to a **delta** assertion — no *new* row.
+2. **`code=123456`** expected `VALIDATION_ERROR`, but DRF's `CharField` **coerces `int` → `"123456"`**,
+   making it a wrong code (`INVALID_OTP`) rather than a malformed request. No approved document
+   requires strict type rejection, so the expectation was dropped rather than the behaviour changed.
+3. **Cross-workspace replay** demanded the OTP be **workspace-bound**, which is impossible without
+   the workspace FK the ERD forbids. Rewritten to assert the invariant the schema can actually
+   guarantee — see the cross-workspace reasoning above.
+
+#### Nine architecture guards updated, not deleted
+
+Guards across nine test files asserted the `accounts` app exposes exactly **five** models. They exist
+to block a `UserSession`, token or `ClientSession` model appearing, and they **fired correctly** when
+`accounts` gained a legitimate documented sixth model. All nine were **narrowed to six**, so that
+protection remains intact.
+
+#### Verification — Master-run, real exit codes captured directly
+
+| Check | Exit |
+|---|---|
+| `manage.py check` | **0** |
+| `makemigrations --check --dry-run` | **0** — no changes |
+| Focused tests (`tests.test_client_otp_api`) | **44/44** |
+| Full Django suite on real PostgreSQL | **812/812** — Story 2.9 sessions and all Epic 02 auth green |
+| `checks.sh` | **0** — all 7 gates PASS |
+| `npm run build` | **0** |
+
+**CI evidence:** `Merge 882e3f47b4d9… into cdda7cc99275…` — the live PR head into the live
+`origin/main`, re-confirmed immediately before merging rather than trusting the earlier run.
+
+#### Story 7.4 — satisfied by this implementation
+
+**Story 7.4 (Client Portal Authentication) is COMPLETE-via-2.8 and has NO separate implementation.**
+See the Story 7.4 record below for the full reasoning.
+
+#### Track boundary — Mobile track untouched
+
+Backend/Web track only. **No file under `mobile/` or `docs/05-mobile/` was read, modified, deleted or
+committed.** The merged diff contains **zero** mobile files, and tracking was published from an
+isolated worktree cut from `origin/main`.
+
+---
+
+## Completed — Story 7.4
+
+### Story 7.4 — Client Portal Authentication  (Epic 07)
+
+**Status:** ✅ **COMPLETE — via Story 2.8.** This is a **scope consolidation, not a new
+implementation.**
+
+**Story 7.4 has NO independent endpoint surface.** API §5 already defines the **only two** client
+authentication endpoints in the entire API specification:
+
+```text
+POST /auth/client/request-code
+POST /auth/client/verify-code
+```
+
+**Story 2.8 owns those endpoints and Decisions 44–49.** Story 7.4's Blueprint text — *"Client
+requests OTP from the Workspace-specific portal"* and *"The Client must have valid Membership for
+that Workspace before accessing protected data"* — restates, in Epic 07 language, exactly the two
+requirements Story 2.8 implements: workspace-scoped OTP request, and an ACTIVE
+`Membership(role=CLIENT)` requirement before access.
+
+**Therefore Story 7.4 is satisfied by Story 2.8.**
+
+> **NO SECOND OTP IMPLEMENTATION MAY EVER BE CREATED FOR STORY 7.4.** There must be one
+> implementation, one OTP mechanism, one endpoint pair, one source of truth. Building a second
+> client-authentication flow would duplicate OTP generation, hashing, expiry, attempt counting,
+> throttling, verification and session creation, and split the contract.
+
+This follows the identical project pattern already applied to **Story 6.3 → satisfied by Story 7.3**.
 
 ---
 
