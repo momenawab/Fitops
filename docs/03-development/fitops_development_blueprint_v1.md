@@ -681,7 +681,48 @@ are unchanged.
 
 ---
 
-## Story 2.8 — Client OTP — ⏸️ DEFERRED (2026-08-17) — blocked by Epic 03
+## Story 2.8 — Client OTP — ✅ COMPLETE (2026-08-25)
+
+**The single canonical owner of Client Portal Authentication.** Story 7.4 describes the same flow and
+is satisfied by this Story — see Story 7.4. One implementation, one OTP mechanism, one endpoint pair.
+
+Implements `POST /auth/client/request-code` and `POST /auth/client/verify-code` per API §5, with
+**Decisions 44–49 unchanged**: 3/hour per email + 10/hour per IP on request, 10/hour on verify, max
+5 attempts, expiry exactly 10 minutes, exhaustion → `OTP_RATE_LIMITED` / 429, and non-null
+`LoginOTP.user_id`. DRF's scoped throttle keys on IP, so the per-email limit is a small
+`SimpleRateThrottle` subclass keyed on the normalized email.
+
+**`LoginOTP`** carries exactly the documented fields with an explicit UUID pk, a non-null `user`,
+and **no workspace FK**. The code is generated with `secrets`, hashed with `make_password`, and
+**never persisted or logged**; verification uses `check_password` (constant-time). Issuing a new code
+invalidates all of that user's usable codes **in the same transaction** under a row lock, so **exactly
+one usable OTP exists per user**.
+
+**`request-code` is anti-enumerating**: unknown email, no membership, INACTIVE membership,
+non-CLIENT role, unknown slug and SUSPENDED workspace all return a **byte-identical** response, and
+only the eligible case sends a code. **`verify-code` requires an ACTIVE `Membership(role=CLIENT)` in
+the workspace resolved server-side from the slug** — the client-supplied slug is never trusted as
+authorization context, and no global current workspace exists. A wrong code increments `attempts`
+and **the increment is committed before the error is raised**. Success **consumes** the OTP and
+starts the session with **`django.contrib.auth.login`** — the Story 2.9 mechanism. **No JWT, no
+second session model.**
+
+**Cross-workspace OTP behaviour is intentional.** `LoginOTP` is not workspace-bound because the
+approved ERD forbids that FK; workspace authorization happens independently through ACTIVE CLIENT
+Membership. A user who is an active client of two workspaces may use either portal's code for either
+— no boundary is crossed. The enforced invariant is that **a valid code cannot authenticate into a
+workspace the user is not an ACTIVE CLIENT of**. **Do not add a workspace FK or a workspace-bound OTP
+without a new explicit decision.**
+
+**Evidence:** 44/44 focused, **812/812** full suite on real PostgreSQL, `checks.sh` 7/7,
+`npm run build` 0, **17/17 mutations caught**. Two mutations required investigation rather than
+acceptance: M12 first failed `manage.py check` (empty `else:`) and was **not counted** until re-run
+in valid form; M5 first survived because the verify view reads only the latest OTP, so a
+**database-level** test now pins the invalidation. Nine architecture guards asserting `accounts` had
+five models were **narrowed to six, not deleted**, so a `UserSession`/token/`ClientSession` model is
+still blocked.
+
+**Superseded deferral note (2026-08-17):**
 
 **Not started, and deliberately not partially implemented.** Both documented endpoints require
 `workspace_slug` in their request bodies (API §5), and this Story's own text requires the Workspace
@@ -1364,7 +1405,7 @@ Application becomes a first-class business record.
 
 ---
 
-# 12. EPIC 07 — Client Applications & OTP
+# 12. EPIC 07 — Client Applications & OTP — ✅ COMPLETE (4/4)
 
 ## Story 7.1 — Application Model — ✅ COMPLETE (2026-08-25)
 
@@ -1526,7 +1567,25 @@ Subsequent purchases by an authenticated Client use `POST /orders` (Story 8.2), 
 
 ---
 
-## Story 7.4 — Client Portal Authentication
+## Story 7.4 — Client Portal Authentication — ✅ COMPLETE (2026-08-25, via Story 2.8)
+
+**Satisfied by Story 2.8. This is a scope consolidation, NOT a new implementation.**
+
+- **Story 7.4 has no independent endpoint surface.**
+- **API §5 already defines the only two client authentication endpoints** in the entire API
+  specification: `POST /auth/client/request-code` and `POST /auth/client/verify-code`.
+- **Story 2.8 owns those endpoints and Decisions 44–49.**
+- The two requirements stated here — an OTP requested from the Workspace-specific portal, and a valid
+  Membership for that Workspace before accessing protected data — are exactly what Story 2.8
+  implements: server-side workspace resolution from `workspace_slug`, and a required ACTIVE
+  `Membership(role=CLIENT)` at verification.
+- **Therefore Story 7.4 is satisfied by Story 2.8.**
+
+> **NO SECOND OTP IMPLEMENTATION MAY EVER BE CREATED FOR STORY 7.4.** One implementation, one OTP
+> mechanism, one endpoint pair, one source of truth. A duplicate would split the contract and
+> re-implement OTP generation, hashing, expiry, attempt counting, throttling and session creation.
+
+This follows the same project pattern as **Story 6.3 → satisfied by Story 7.3**.
 
 Client requests OTP from the Workspace-specific portal.
 
